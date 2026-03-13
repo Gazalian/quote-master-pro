@@ -1,3 +1,6 @@
+import { useState } from "react";
+import { QuoteEditor } from "./QuoteEditor";
+
 interface QuoteItem {
   name: string;
   qty: number;
@@ -25,25 +28,38 @@ const formatNGN = (amount: number) =>
   `₦${amount.toLocaleString("en-NG")}`;
 
 export const QuoteCard = ({ quote }: { quote: Quote }) => {
+  const [currentQuote, setCurrentQuote] = useState(quote);
+  const [editing, setEditing] = useState(false);
+
+  if (editing) {
+    return (
+      <QuoteEditor
+        quote={currentQuote}
+        onClose={() => setEditing(false)}
+        onSave={(updated) => { setCurrentQuote(updated); setEditing(false); }}
+      />
+    );
+  }
+
   return (
     <div className="bg-card rounded-xl shadow-sm overflow-hidden border border-border">
       {/* Header */}
       <div className="bg-primary px-4 py-3">
         <div className="flex justify-between items-start">
           <div>
-            <p className="text-primary-foreground/70 text-xs font-medium">{quote.ref}</p>
+            <p className="text-primary-foreground/70 text-xs font-medium">{currentQuote.ref}</p>
             <p className="text-primary-foreground font-semibold text-sm mt-0.5">
-              {quote.client}
+              {currentQuote.client}
             </p>
           </div>
-          <p className="text-primary-foreground/70 text-xs">{quote.date}</p>
+          <p className="text-primary-foreground/70 text-xs">{currentQuote.date}</p>
         </div>
-        <p className="text-primary-foreground/80 text-xs mt-1">{quote.description}</p>
+        <p className="text-primary-foreground/80 text-xs mt-1">{currentQuote.description}</p>
       </div>
 
       {/* Groups */}
       <div className="divide-y divide-border">
-        {quote.groups.map((group, gi) => {
+        {currentQuote.groups.map((group, gi) => {
           const subtotal = group.items.reduce((s, i) => s + i.total, 0);
           return (
             <div key={gi} className="px-4 py-3">
@@ -87,12 +103,15 @@ export const QuoteCard = ({ quote }: { quote: Quote }) => {
       {/* Grand Total */}
       <div className="bg-secondary px-4 py-3 flex justify-between items-center">
         <span className="font-semibold text-sm text-foreground">Grand Total</span>
-        <span className="font-bold text-lg text-primary">{formatNGN(quote.grandTotal)}</span>
+        <span className="font-bold text-lg text-primary">{formatNGN(currentQuote.grandTotal)}</span>
       </div>
 
       {/* Actions */}
       <div className="flex gap-2 px-4 py-3 border-t border-border">
-        <button className="flex-1 bg-primary text-primary-foreground py-2.5 rounded-lg text-sm font-semibold">
+        <button
+          onClick={() => setEditing(true)}
+          className="flex-1 bg-primary text-primary-foreground py-2.5 rounded-lg text-sm font-semibold"
+        >
           Edit Quote
         </button>
         <button className="flex-1 bg-secondary text-secondary-foreground py-2.5 rounded-lg text-sm font-semibold">
