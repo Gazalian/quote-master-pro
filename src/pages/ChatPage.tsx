@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Mic, Image, Plus } from "lucide-react";
+import { Send, Mic, Image, Menu } from "lucide-react";
 import { QuoteCard } from "@/components/QuoteCard";
+import { ChatHistoryDrawer } from "@/components/ChatHistoryDrawer";
 
 interface Message {
   id: string;
@@ -72,6 +73,7 @@ const initialMessages: Message[] = [
 const ChatPage = () => {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [input, setInput] = useState("");
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -89,13 +91,19 @@ const ChatPage = () => {
 
   return (
     <div className="flex flex-col h-full">
+      <ChatHistoryDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
+
       {/* Top bar */}
       <div className="flex items-center justify-between px-4 h-14 bg-primary shrink-0">
-        <span className="text-primary-foreground font-semibold text-lg">OtoQuote AI</span>
-        <button className="flex items-center gap-1.5 bg-primary-foreground/20 text-primary-foreground px-3 py-1.5 rounded-full text-sm font-medium">
-          <Plus size={16} />
-          New Chat
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setDrawerOpen(true)}
+            className="text-primary-foreground"
+          >
+            <Menu size={22} />
+          </button>
+          <span className="text-primary-foreground font-semibold text-lg">OtoQuote AI</span>
+        </div>
       </div>
 
       {/* Chat body */}
