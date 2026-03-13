@@ -13,6 +13,9 @@ export default {
       },
     },
     extend: {
+      fontFamily: {
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
@@ -56,6 +59,30 @@ export default {
           "accent-foreground": "hsl(var(--sidebar-accent-foreground))",
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
+        },
+        chat: {
+          bg: "hsl(var(--chat-bg))",
+          "bubble-user": "hsl(var(--bubble-user))",
+          "bubble-user-fg": "hsl(var(--bubble-user-foreground))",
+          "bubble-ai": "hsl(var(--bubble-ai))",
+          "bubble-ai-fg": "hsl(var(--bubble-ai-foreground))",
+        },
+        badge: {
+          pending: "hsl(var(--badge-pending))",
+          "pending-fg": "hsl(var(--badge-pending-foreground))",
+          approved: "hsl(var(--badge-approved))",
+          "approved-fg": "hsl(var(--badge-approved-foreground))",
+          invoiced: "hsl(var(--badge-invoiced))",
+          "invoiced-fg": "hsl(var(--badge-invoiced-foreground))",
+          archived: "hsl(var(--badge-archived))",
+          "archived-fg": "hsl(var(--badge-archived-foreground))",
+          ai: "hsl(var(--badge-ai))",
+          myprice: "hsl(var(--badge-myprice))",
+        },
+        nav: {
+          bg: "hsl(var(--nav-bg))",
+          active: "hsl(var(--nav-active))",
+          inactive: "hsl(var(--nav-inactive))",
         },
       },
       borderRadius: {
