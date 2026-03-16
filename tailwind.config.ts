@@ -60,6 +60,12 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
+        "doc": {
+          primary: "hsl(var(--doc-primary))",
+          "primary-foreground": "hsl(var(--doc-primary-foreground))",
+          secondary: "hsl(var(--doc-secondary))",
+          "secondary-foreground": "hsl(var(--doc-secondary-foreground))",
+        },
         chat: {
           bg: "hsl(var(--chat-bg))",
           "bubble-user": "hsl(var(--bubble-user))",
