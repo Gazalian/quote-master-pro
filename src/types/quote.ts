@@ -22,6 +22,7 @@ export type TemplateStyle = "classic" | "modern" | "minimal";
 
 export interface Quote {
   id: string;
+  user_id: string;
   ref: string;
   date: string;
   client: string;
@@ -30,12 +31,18 @@ export interface Quote {
   grandTotal: number;
   status: QuoteStatus;
   templateStyle: TemplateStyle;
+  isDraft?: boolean;
+  session_id?: string;
+  version: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface BrandSettings {
   companyName: string;
   tagline: string;
   address: string;
+  contactPerson: string;
   phone: string;
   whatsapp: string;
   email: string;
@@ -54,21 +61,31 @@ export interface BankDetails {
   paymentTerms?: string;
 }
 
-export interface Invoice extends Quote {
-  invoiceRef: string;
-  sourceQuoteId: string;
-  bank: BankDetails;
-  paymentTerms: string;
-  depositPercent: number;
-  dueDate: string;
+export interface Invoice {
+  id: string;
+  quotation_id: string;
+  user_id: string;
+  invoice_number: string;
+  client_name: string;
+  total_amount: number;
+  status: "PENDING" | "PAID" | "OVERDUE";
+  payment_details: BankDetails;
+  data: any; // Entire quote data snapshot
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ChatSession {
   id: string;
+  user_id: string;
   title: string;
-  client: string;
-  date: string;
-  preview: string;
+  last_message?: string;
+  created_at: string;
+  updated_at: string;
+  // For UI convenience
+  client?: string;
+  date?: string;
+  preview?: string;
 }
 
 export interface ChatMessage {
@@ -79,3 +96,17 @@ export interface ChatMessage {
   imageUrl?: string;
   isEdited?: boolean;
 }
+
+export interface PriceLogEntry {
+  id: string;
+  name: string;
+  category?: string;
+  unit: string;
+  unitPrice: number;
+  supplier?: string;
+  lastUpdated?: string;
+  type?: string;
+}
+
+
+

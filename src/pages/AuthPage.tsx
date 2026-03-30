@@ -16,29 +16,20 @@ export default function AuthPage() {
   }, [session, navigate]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4 animate-in fade-in zoom-in-95 duration-500">
-      <div className="w-full max-w-md bg-card p-8 rounded-2xl shadow-xl border border-border">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-accent/30 to-background p-4 animate-in fade-in zoom-in-95 duration-500">
+      <div className="w-full max-w-md bg-card p-8 rounded-2xl shadow-2xl border border-border/50">
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <svg
-              className="w-10 h-10 text-primary"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M13 10V3L4 14h7v7l9-11h-7z"
-              />
-            </svg>
+          <div className="mx-auto mb-6">
+            <img
+              src="/otoqoute logo.png"
+              alt="OtoQuote AI Logo"
+              className="h-16 w-auto mx-auto"
+            />
           </div>
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
-            OtoQuote AI
+          <h1 className="text-2xl font-bold text-[#0056D2] mb-2">
+            Welcome to OtoQuote AI
           </h1>
-          <p className="text-muted-foreground mt-2">Sign in to start quoting smarter</p>
+          <p className="text-muted-foreground">Sign in to start generating professional quotes</p>
         </div>
 
         <Auth

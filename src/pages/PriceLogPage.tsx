@@ -1,70 +1,82 @@
-import { useState } from "react";
-import { Search, Plus, Edit2, Trash2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Search, Plus, Edit2, Trash2, Loader2 } from "lucide-react";
 import { PriceLogEditor } from "@/components/PriceLogEditor";
+import { useAuth } from "@/lib/AuthContext";
+import { priceLogAPI } from "@/lib/api";
 import { toast } from "sonner";
+
+import { PriceLogEntry } from "@/types/quote";
 
 type PriceTab = "MATERIALS" | "LABOUR" | "AI SUGGESTIONS";
 
-interface PriceEntry {
-  id: string;
-  name: string;
-  category: string;
-  unit: string;
-  unitPrice: number;
-  supplier?: string;
-  lastUpdated: string;
-}
-
-const initialMaterials: PriceEntry[] = [
-  { id: "1", name: '2.5mm Twin Cable (Nigerchin)', category: "Electrical", unit: "per roll", unitPrice: 4800, supplier: "Jendol Stores, Apapa", lastUpdated: "10 Mar 2026" },
-  { id: "2", name: 'Conduit Pipe (20mm)', category: "Electrical", unit: "per length", unitPrice: 450, supplier: "Alaba Market", lastUpdated: "8 Mar 2026" },
-  { id: "3", name: '6-way DB Board', category: "Electrical", unit: "per unit", unitPrice: 22000, lastUpdated: "5 Mar 2026" },
-  { id: "4", name: 'Sandcrete Blocks (9 inch)', category: "Structural", unit: "per block", unitPrice: 350, supplier: "Block Factory, Ikorodu", lastUpdated: "1 Mar 2026" },
-  { id: "5", name: 'Sharp Sand', category: "Structural", unit: "per tipper", unitPrice: 45000, lastUpdated: "28 Feb 2026" },
-  { id: "6", name: 'Dangote Cement (50kg)', category: "Structural", unit: "per bag", unitPrice: 5800, supplier: "Dangote Depot", lastUpdated: "1 Mar 2026" },
-];
-
-const initialLabour: PriceEntry[] = [
-  { id: "l1", name: "Socket installation per point", category: "Electrical", unit: "per point", unitPrice: 2500, lastUpdated: "10 Mar 2026" },
-  { id: "l2", name: "Plastering per m²", category: "Finishes", unit: "per m²", unitPrice: 1200, lastUpdated: "5 Mar 2026" },
-  { id: "l3", name: "Plumbing pipe run per metre", category: "Plumbing", unit: "per metre", unitPrice: 800, lastUpdated: "3 Mar 2026" },
-];
 
 const tabs: PriceTab[] = ["MATERIALS", "LABOUR", "AI SUGGESTIONS"];
 const formatNGN = (amount: number) => `₦${amount.toLocaleString("en-NG")}`;
 
 const PriceLogPage = () => {
+  const { user } = useAuth();
   const [tab, setTab] = useState<PriceTab>("MATERIALS");
   const [search, setSearch] = useState("");
-  const [materials, setMaterials] = useState<PriceEntry[]>(initialMaterials);
-  const [labour, setLabour] = useState<PriceEntry[]>(initialLabour);
-  const [editing, setEditing] = useState<PriceEntry | null>(null);
+  const [materials, setMaterials] = useState<PriceLogEntry[]>([]);
+  const [labour, setLabour] = useState<PriceLogEntry[]>([]);
+  const [editing, setEditing] = useState<PriceLogEntry | null>(null);
   const [isAdding, setIsAdding] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchEntries = async () => {
+      try {
+        const entries = await priceLogAPI.getEntries();
+        setMaterials(entries.filter((e: any) => e.type === "MATERIALS"));
+        setLabour(entries.filter((e: any) => e.type === "LABOUR"));
+      } catch (error) {
+        console.error("Failed to fetch price logs (using fallback):", error);
+        // Fallback for demo if DB isn't provisioned
+        setMaterials([]);
+        setLabour([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchEntries();
+  }, []);
 
   const items = tab === "MATERIALS" ? materials : tab === "LABOUR" ? labour : [];
   const filtered = items.filter((i) => !search || i.name.toLowerCase().includes(search.toLowerCase()));
 
-  const handleSave = (entry: PriceEntry) => {
-    const updated = { ...entry, lastUpdated: "13 Mar 2026" };
-    const setter = tab === "MATERIALS" ? setMaterials : setLabour;
-    setter((prev) => {
-      const idx = prev.findIndex((p) => p.id === updated.id);
-      if (idx >= 0) {
-        const next = [...prev];
-        next[idx] = updated;
-        return next;
-      }
-      return [...prev, updated];
-    });
-    setEditing(null);
-    setIsAdding(false);
-    toast.success(editing ? "Price updated" : "Price added");
+  const handleSave = async (entry: PriceLogEntry) => {
+    if (!user) return;
+    try {
+       const payload = { ...entry, type: tab === "LABOUR" ? "LABOUR" : "MATERIALS" };
+       if (editing) {
+         await priceLogAPI.updateEntry(entry.id, payload);
+         toast.success("Price updated");
+       } else {
+         await priceLogAPI.createEntry(payload, user.id);
+         toast.success("Price added");
+       }
+       
+       // Reload
+       const entries = await priceLogAPI.getEntries();
+       setMaterials(entries.filter((e: any) => e.type === "MATERIALS"));
+       setLabour(entries.filter((e: any) => e.type === "LABOUR"));
+       
+       setEditing(null);
+       setIsAdding(false);
+    } catch (e: any) {
+       toast.error(e.message || "Failed to save price");
+    }
   };
 
-  const handleDelete = (id: string) => {
-    const setter = tab === "MATERIALS" ? setMaterials : setLabour;
-    setter((prev) => prev.filter((p) => p.id !== id));
-    toast.success("Item deleted");
+  const handleDelete = async (id: string) => {
+    try {
+      await priceLogAPI.deleteEntry(id);
+      const setter = tab === "MATERIALS" ? setMaterials : setLabour;
+      setter((prev) => prev.filter((p) => p.id !== id));
+      toast.success("Item deleted");
+    } catch (e: any) {
+      toast.error(e.message || "Failed to delete");
+    }
   };
 
   if (editing || isAdding) {
@@ -117,7 +129,9 @@ const PriceLogPage = () => {
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
-        {tab === "AI SUGGESTIONS" ? (
+        {isLoading ? (
+          <div className="flex justify-center items-center h-20"><Loader2 className="animate-spin text-primary" /></div>
+        ) : tab === "AI SUGGESTIONS" ? (
           <p className="text-center text-muted-foreground text-sm mt-8">
             AI suggestions will appear here after generating quotes
           </p>
@@ -130,8 +144,9 @@ const PriceLogPage = () => {
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm text-foreground">{item.name}</p>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    {item.category} · {item.unit}
+                    {item.category ? `${item.category} · ` : ""}{item.unit}
                   </p>
+
                   {item.supplier && (
                     <p className="text-xs text-muted-foreground">{item.supplier}</p>
                   )}

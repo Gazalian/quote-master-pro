@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from "react-router-dom";
-import { MessageSquare, LayoutList, Calculator, Paintbrush, User, Zap } from "lucide-react";
+import { MessageSquare, LayoutList, Calculator, Paintbrush, User } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 
 export const DesktopSidebar = () => {
@@ -17,15 +17,11 @@ export const DesktopSidebar = () => {
     <aside className="hidden lg:flex flex-col w-[280px] bg-card border-r border-border h-screen sticky top-0">
       {/* App Logo / Header */}
       <div className="p-6 flex items-center gap-3 border-b border-border/50">
-        <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
-          <Zap className="w-6 h-6 text-primary fill-primary/20" />
-        </div>
-        <div>
-          <h1 className="font-bold text-foreground leading-tight">OtoQuote</h1>
-          <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">
-            AI Quotation Engine
-          </p>
-        </div>
+        <img
+          src="/otoqoute logo.png"
+          alt="OtoQuote AI"
+          className="h-10 w-auto"
+        />
       </div>
 
       {/* Navigation Links */}
@@ -41,7 +37,7 @@ export const DesktopSidebar = () => {
                 ${
                   isActive
                     ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
                 }
               `}
             >
@@ -63,7 +59,7 @@ export const DesktopSidebar = () => {
                 ${
                   location.pathname === "/profile"
                     ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
                 }
               `}
             >

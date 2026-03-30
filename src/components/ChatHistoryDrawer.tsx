@@ -17,13 +17,68 @@ const mockSessions: ChatSession[] = [
 ];
 
 interface Props {
-  open: boolean;
-  onClose: () => void;
+  open?: boolean;
+  variant?: "drawer" | "sidebar";
+  sessions?: ChatSession[];
+  onClose?: () => void;
   onSelectSession?: (id: string) => void;
   onNewChat?: () => void;
 }
 
-export const ChatHistoryDrawer = ({ open, onClose, onSelectSession, onNewChat }: Props) => {
+export const ChatHistoryDrawer = ({ open = true, variant = "drawer", sessions = [], onClose, onSelectSession, onNewChat }: Props) => {
+  const innerContent = (
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 h-14 border-b border-border shrink-0">
+        <h2 className="font-bold text-foreground">Chat History</h2>
+        {variant === "drawer" && onClose && (
+          <button
+            onClick={onClose}
+            className="w-9 h-9 flex items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
+          >
+            <X size={20} />
+          </button>
+        )}
+      </div>
+
+      {/* New Chat button */}
+      <div className="px-3 pt-3 pb-1">
+        <button
+          onClick={() => { onNewChat?.(); onClose?.(); }}
+          className="w-full flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2.5 rounded-xl text-sm font-semibold"
+        >
+          <Plus size={18} />
+          New Chat
+        </button>
+      </div>
+
+      {/* Sessions list */}
+      <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1">
+        {(sessions.length > 0 ? sessions : mockSessions).map((session) => (
+          <button
+            key={session.id}
+            onClick={() => { onSelectSession?.(session.id); onClose?.(); }}
+            className="w-full text-left px-3 py-3 rounded-xl hover:bg-muted transition-colors group relative"
+          >
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                <MessageSquare size={16} className="text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">{session.title}</p>
+                <p className="text-xs text-muted-foreground truncate">{session.client}</p>
+              </div>
+              <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground shrink-0 mt-1">{session.date}</span>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  if (variant === "sidebar") {
+    return <div className="h-full bg-card">{innerContent}</div>;
+  }
   return (
     <>
       {/* Backdrop */}
@@ -40,52 +95,7 @@ export const ChatHistoryDrawer = ({ open, onClose, onSelectSession, onNewChat }:
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="flex flex-col h-full">
-          {/* Header */}
-          <div className="flex items-center justify-between px-4 h-14 border-b border-border shrink-0">
-            <h2 className="font-bold text-foreground">Chat History</h2>
-            <button
-              onClick={onClose}
-              className="w-9 h-9 flex items-center justify-center rounded-full text-muted-foreground hover:bg-secondary"
-            >
-              <X size={20} />
-            </button>
-          </div>
-
-          {/* New Chat button */}
-          <div className="px-3 pt-3 pb-1">
-            <button
-              onClick={() => { onNewChat?.(); onClose(); }}
-              className="w-full flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2.5 rounded-xl text-sm font-semibold"
-            >
-              <Plus size={18} />
-              New Chat
-            </button>
-          </div>
-
-          {/* Sessions list */}
-          <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1">
-            {mockSessions.map((session) => (
-              <button
-                key={session.id}
-                onClick={() => { onSelectSession?.(session.id); onClose(); }}
-                className="w-full text-left px-3 py-3 rounded-xl hover:bg-secondary transition-colors"
-              >
-                <div className="flex items-start gap-3">
-                  <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-                    <MessageSquare size={16} className="text-primary" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{session.title}</p>
-                    <p className="text-xs text-muted-foreground truncate">{session.client}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{session.preview}</p>
-                  </div>
-                  <span className="text-[10px] text-muted-foreground shrink-0 mt-1">{session.date}</span>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
+        {innerContent}
       </div>
     </>
   );

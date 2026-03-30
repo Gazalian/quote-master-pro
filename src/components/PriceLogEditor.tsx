@@ -1,20 +1,13 @@
 import { useState } from "react";
 import { X, Save } from "lucide-react";
 
-interface PriceEntry {
-  id: string;
-  name: string;
-  category: string;
-  unit: string;
-  unitPrice: number;
-  supplier?: string;
-}
+import { PriceLogEntry } from "@/types/quote";
 
 interface Props {
-  entry?: PriceEntry | null;
+  entry?: PriceLogEntry | null;
   type: "MATERIALS" | "LABOUR";
   onClose: () => void;
-  onSave: (entry: PriceEntry) => void;
+  onSave: (entry: PriceLogEntry) => void;
 }
 
 const materialCategories = ["Electrical", "Structural", "Plumbing", "Finishes", "Roofing", "Other"];
@@ -22,7 +15,7 @@ const labourCategories = ["Electrical", "Plumbing", "Structural", "Finishes", "P
 
 export const PriceLogEditor = ({ entry, type, onClose, onSave }: Props) => {
   const categories = type === "MATERIALS" ? materialCategories : labourCategories;
-  const [form, setForm] = useState<PriceEntry>(
+  const [form, setForm] = useState<PriceLogEntry>(
     entry || {
       id: Date.now().toString(),
       name: "",

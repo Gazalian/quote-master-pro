@@ -24,6 +24,8 @@ import {
 import { Quote, QuoteGroup, QuoteItem } from "@/types/quote";
 import { SortableGroup } from "./dnd/SortableGroup";
 import { SortableItem } from "./dnd/SortableItem";
+import { useAuth } from "@/lib/AuthContext";
+import { priceLogAPI } from "@/lib/api";
 
 const formatNGN = (amount: number) => `₦${amount.toLocaleString("en-NG")}`;
 
@@ -33,11 +35,22 @@ interface Props {
   onSave: (quote: Quote) => void;
 }
 
+import { QuoteCard } from "./QuoteCard";
+
 export const QuoteEditor = ({ quote, onClose, onSave }: Props) => {
+  const { user } = useAuth();
   const [editedQuote, setEditedQuote] = useState<Quote>(JSON.parse(JSON.stringify(quote)));
+  const [viewMode, setViewMode] = useState<"edit" | "preview">("edit");
   const [vatEnabled, setVatEnabled] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [priceLogPrompt, setPriceLogPrompt] = useState<{ itemName: string; price: number; groupIdx: number; itemIdx: number } | null>(null);
+
+  // Load user prices
+  const [allPrices, setAllPrices] = useState<any[]>([]);
+  
+  useMemo(() => {
+    priceLogAPI.getEntries().then(entries => setAllPrices(entries)).catch(console.error);
+  }, []);
 
   // DnD State
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -76,6 +89,15 @@ export const QuoteEditor = ({ quote, onClose, onSave }: Props) => {
         }
       } else if (field === "qty") {
         item.qty = Number(value);
+      } else if (field === "name") {
+        item.name = value as string;
+        // Check if matching price log entry
+        const match = allPrices.find((p) => p.name === item.name);
+        if (match) {
+           item.unitPrice = match.unitPrice;
+           item.unit = match.unit;
+           item.source = "my_price";
+        }
       } else {
         (item as any)[field] = value;
       }
@@ -105,6 +127,26 @@ export const QuoteEditor = ({ quote, onClose, onSave }: Props) => {
         source: "my_price",
       });
       return recalculate(next);
+    });
+  };
+
+  const addGroup = () => {
+    setEditedQuote((prev) => {
+      const next = JSON.parse(JSON.stringify(prev)) as Quote;
+      next.groups.push({
+        id: `g-${Date.now()}`,
+        name: "New Category",
+        items: []
+      });
+      return next;
+    });
+  };
+
+  const updateGroupName = (gi: number, name: string) => {
+    setEditedQuote((prev) => {
+      const next = JSON.parse(JSON.stringify(prev)) as Quote;
+      next.groups[gi].name = name;
+      return next;
     });
   };
 
@@ -220,10 +262,17 @@ export const QuoteEditor = ({ quote, onClose, onSave }: Props) => {
       <div className="border border-border rounded-lg bg-card p-2.5 space-y-1.5 shadow-sm">
         <div className="flex items-center justify-between">
           <input
+            list={`prices-${gi}-${ii}`}
             value={item.name}
             onChange={(e) => updateItem(gi, ii, "name", e.target.value)}
             className="flex-1 text-sm font-medium text-foreground bg-transparent outline-none"
+            placeholder="Item name..."
           />
+          <datalist id={`prices-${gi}-${ii}`}>
+            {allPrices.map(p => (
+              <option key={p.id} value={p.name}>{formatNGN(p.unitPrice)} - {p.unit}</option>
+            ))}
+          </datalist>
           <div className="flex items-center gap-1.5 pl-2">
             <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap ${
               item.source === "my_price" ? "bg-badge-approved/15 text-badge-myprice" : "bg-badge-invoiced/15 text-badge-ai"
@@ -278,6 +327,25 @@ export const QuoteEditor = ({ quote, onClose, onSave }: Props) => {
     toast.success("Quote saved!");
   };
 
+  const handleSaveToPriceLog = async () => {
+    if (!user || !priceLogPrompt) return;
+    try {
+       const unit = editedQuote.groups[priceLogPrompt.groupIdx].items[priceLogPrompt.itemIdx].unit;
+       await priceLogAPI.createEntry({
+          name: priceLogPrompt.itemName,
+          unitPrice: priceLogPrompt.price,
+          unit: unit || "unit",
+          category: "General",
+          type: "MATERIALS"
+       }, user.id);
+       toast.success(`Saved to Price Log: ${priceLogPrompt.itemName}`);
+    } catch (e: any) {
+       toast.error(e.message || "Failed to save to Price Log");
+    } finally {
+       setPriceLogPrompt(null);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-background flex flex-col">
       {/* Header */}
@@ -285,13 +353,34 @@ export const QuoteEditor = ({ quote, onClose, onSave }: Props) => {
         <button onClick={onClose} className="text-primary-foreground hover:bg-white/10 p-1.5 rounded-full transition-colors">
           <X size={22} />
         </button>
-        <span className="text-primary-foreground font-semibold">Edit Quote</span>
+        <div className="flex bg-black/20 p-1 rounded-lg">
+          <button 
+            onClick={() => setViewMode("edit")}
+            className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${viewMode === "edit" ? "bg-white text-primary shadow-sm" : "text-primary-foreground hover:bg-white/10"}`}
+          >
+            Editor
+          </button>
+          <button 
+             onClick={() => setViewMode("preview")}
+             className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${viewMode === "preview" ? "bg-white text-primary shadow-sm" : "text-primary-foreground hover:bg-white/10"}`}
+          >
+            Preview
+          </button>
+        </div>
         <button onClick={handleSave} className="text-primary-foreground hover:bg-white/10 p-1.5 rounded-full transition-colors">
           <Save size={22} />
         </button>
       </div>
 
-      {/* Client info */}
+      {viewMode === "preview" ? (
+        <div className="flex-1 overflow-y-auto bg-secondary/30 p-2 md:p-6 pb-24">
+           <div className="max-w-3xl mx-auto pointer-events-none">
+             <QuoteCard quote={editedQuote} />
+           </div>
+        </div>
+      ) : (
+        <>
+          {/* Client info */}
       <div className="px-4 py-3 bg-card border-b border-border space-y-2 shrink-0">
         <div>
           <label className="text-[10px] text-muted-foreground font-medium uppercase">Client</label>
@@ -331,9 +420,18 @@ export const QuoteEditor = ({ quote, onClose, onSave }: Props) => {
                 return (
                   <SortableGroup key={group.id} id={group.id}>
                     <div className="w-full flex items-center justify-between px-4 py-3 bg-secondary rounded-t-xl hover:bg-secondary/80 transition-colors">
-                      <span className="text-xs font-bold text-foreground uppercase tracking-wide flex-1 mr-2 truncate">
-                        {gi + 1}. {group.name}
-                      </span>
+                      <div className="flex items-center gap-2 flex-1 mr-2 min-w-0">
+                        <span className="text-xs font-bold text-foreground uppercase tracking-wide shrink-0">
+                          {gi + 1}.
+                        </span>
+                        <input
+                          value={group.name}
+                          onChange={(e) => updateGroupName(gi, e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-xs font-bold text-foreground uppercase tracking-wide bg-transparent outline-none truncate focus:border-b-2 focus:border-primary w-full"
+                          placeholder="Category Name"
+                        />
+                      </div>
                       <div className="flex items-center gap-3 shrink-0">
                         <span className="text-xs font-semibold text-primary">{formatNGN(groupTotal)}</span>
                         <button 
@@ -368,6 +466,13 @@ export const QuoteEditor = ({ quote, onClose, onSave }: Props) => {
                 );
               })}
             </SortableContext>
+            
+            <button
+              onClick={addGroup}
+              className="w-full mt-4 flex items-center justify-center gap-2 py-3 bg-secondary hover:bg-secondary/80 rounded-xl text-sm font-bold text-foreground transition-colors border-2 border-dashed border-border hover:border-primary/50"
+            >
+              <Plus size={18} /> Add Category
+            </button>
           </div>
 
           <DragOverlay dropAnimation={{ sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: '0.4' } } }) }}>
@@ -417,10 +522,7 @@ export const QuoteEditor = ({ quote, onClose, onSave }: Props) => {
           </p>
           <div className="flex gap-2">
             <button
-              onClick={() => {
-                toast.success(`Saved to Price Log: ${priceLogPrompt.itemName}`);
-                setPriceLogPrompt(null);
-              }}
+              onClick={handleSaveToPriceLog}
               className="flex-1 bg-primary text-primary-foreground py-2.5 rounded-xl text-sm font-semibold hover:opacity-90 transition-opacity"
             >
               Save to Price Log
@@ -433,6 +535,8 @@ export const QuoteEditor = ({ quote, onClose, onSave }: Props) => {
             </button>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );

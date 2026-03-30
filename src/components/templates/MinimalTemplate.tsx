@@ -9,6 +9,7 @@ export const MinimalTemplate = ({ quote, brand }: { quote: Quote; brand: BrandSe
       {/* Header */}
       <div className="flex justify-between items-end border-b pb-6 mb-8 border-border">
         <div>
+          {brand.logoUrl && <img src={brand.logoUrl} alt="Logo" className="h-10 w-auto object-contain mb-4 grayscale contrast-125" />}
           <h1 className="text-3xl font-light text-foreground mb-1 tracking-tight">{quote.client}</h1>
           <p className="text-muted-foreground text-sm">{quote.description}</p>
         </div>
@@ -16,9 +17,13 @@ export const MinimalTemplate = ({ quote, brand }: { quote: Quote; brand: BrandSe
           <p className="text-sm font-medium text-foreground tracking-widest uppercase mb-1">
             {quote.status === "INVOICED" ? "Invoice" : "Quotation"}
           </p>
-          <div className="text-xs text-muted-foreground space-y-0.5 mt-2">
+          <div className="text-xs text-muted-foreground space-y-0.5 mt-2 flex flex-col items-end">
             <p className="font-semibold text-foreground">{brand.companyName}</p>
-            <p>{brand.phone}</p>
+            {brand.rcNumber && <p className="text-[10px]">CAC: {brand.rcNumber}</p>}
+            {brand.address && <p className="max-w-[200px] text-right">{brand.address}</p>}
+            {brand.contactPerson && <p>Attn: {brand.contactPerson}</p>}
+            {brand.phone && <p>{brand.phone}</p>}
+            {brand.email && <p>{brand.email}</p>}
           </div>
           <div className="text-xs text-muted-foreground space-y-0.5 mt-4">
             <p>Ref: <span className="font-medium text-foreground">{quote.ref}</span></p>
@@ -83,13 +88,16 @@ export const MinimalTemplate = ({ quote, brand }: { quote: Quote; brand: BrandSe
 
       {/* Invoice Details */}
       {quote.status === "INVOICED" && brand.bankDetails && (
-        <div className="border-t border-border pt-8 text-sm max-w-xl">
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-4">Payment Information</p>
-          <div className="grid grid-cols-2 gap-y-4 gap-x-8">
-            <div>
-              <p className="text-muted-foreground text-xs mb-1">Bank</p>
-              <p className="font-medium text-foreground">{brand.bankDetails.bankName}</p>
-            </div>
+        <div className="border-t border-border pt-8 text-sm w-full">
+          <div className="flex justify-between items-start mb-4 max-w-xl">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Payment Information</p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-8 justify-between">
+            <div className="grid grid-cols-2 gap-y-4 gap-x-8 max-w-xl flex-1">
+              <div>
+                <p className="text-muted-foreground text-xs mb-1">Bank</p>
+                <p className="font-medium text-foreground">{brand.bankDetails.bankName}</p>
+              </div>
             <div>
               <p className="text-muted-foreground text-xs mb-1">Account Number</p>
               <p className="font-medium text-foreground">{brand.bankDetails.accountNumber}</p>
@@ -101,6 +109,16 @@ export const MinimalTemplate = ({ quote, brand }: { quote: Quote; brand: BrandSe
             <div className="col-span-2 mt-2">
               <p className="text-muted-foreground text-xs mb-1">Terms</p>
               <p className="text-foreground text-xs whitespace-pre-wrap">{brand.bankDetails.paymentTerms}</p>
+            </div>
+          </div>
+          
+          <div className="shrink-0 sm:min-w-[200px] bg-secondary/30 rounded-lg p-4 border border-border/50 h-fit">
+               <p className="text-xs text-muted-foreground mb-1">Deposit Required (70%)</p>
+               <p className="font-semibold text-foreground text-sm mb-3">{formatNGN(quote.grandTotal * 0.7)}</p>
+               <div className="border-t border-border/50 pt-2 text-xs">
+                 <p className="text-muted-foreground inline-block w-20">Balance:</p>
+                 <span className="font-medium text-foreground">{formatNGN(quote.grandTotal * 0.3)}</span>
+               </div>
             </div>
           </div>
         </div>

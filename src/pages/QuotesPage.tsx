@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { Search, MoreVertical, Loader2 } from "lucide-react";
+import { ChevronLeft, Search, MoreVertical, Loader2 } from "lucide-react";
+import { QuoteCard } from "@/components/QuoteCard";
 import { toast } from "sonner";
 import { Quote, QuoteStatus } from "@/types/quote";
 import { quoteAPI } from "@/lib/api";
@@ -22,6 +23,7 @@ const QuotesPage = () => {
   const [filter, setFilter] = useState<QuoteStatus | "ALL">("ALL");
   const [search, setSearch] = useState("");
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+  const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
 
   useEffect(() => {
     fetchQuotes();
@@ -69,17 +71,67 @@ const QuotesPage = () => {
     }
   };
 
+  const handleDuplicate = async (quote: Quote) => {
+    try {
+      if (!user) return;
+      const newRef = `OQ-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
+      const newQuoteData: Partial<Quote> = {
+         ref: newRef,
+         client: quote.client,
+         description: quote.description,
+         status: "APPROVED",
+         templateStyle: quote.templateStyle,
+         grandTotal: quote.grandTotal,
+         groups: quote.groups
+      };
+      await quoteAPI.createQuote(newQuoteData, user.id);
+      toast.success("Quote duplicated successfully!");
+      setOpenDropdownId(null);
+      fetchQuotes();
+    } catch (error) {
+       toast.error("Failed to duplicate quote.");
+    }
+  };
+
+  if (selectedQuote) {
+    return (
+      <div className="flex flex-col h-full bg-background relative">
+        <div className="flex items-center gap-3 px-4 py-4 bg-card shrink-0 border-b border-border shadow-sm">
+          <button onClick={() => { setSelectedQuote(null); fetchQuotes(); }} className="text-muted-foreground hover:text-foreground">
+            <ChevronLeft size={24} />
+          </button>
+          <div className="min-w-0">
+            <h1 className="text-xl font-bold text-foreground truncate">{selectedQuote.client}</h1>
+            <p className="text-xs text-muted-foreground font-mono">{selectedQuote.ref}</p>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-secondary/10">
+          <div className="max-w-4xl mx-auto">
+            <QuoteCard 
+              quote={selectedQuote} 
+              mode="dashboard" 
+              onQuoteSaved={(updated) => {
+                setSelectedQuote(updated);
+                fetchQuotes(); 
+              }}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full bg-background relative" onClick={() => setOpenDropdownId(null)}>
       <div className="px-4 py-6 bg-card shrink-0 border-b border-border shadow-sm">
         <h1 className="text-2xl font-bold text-foreground mb-4">Quotations</h1>
         <div className="relative mb-4">
-          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by client, ref, or description..."
-            className="w-full bg-secondary rounded-xl pl-10 pr-4 py-3 text-sm text-foreground placeholder:text-muted-foreground outline-none border border-border focus:border-primary transition-colors"
+            className="w-full bg-white rounded-xl pl-10 pr-4 py-3 text-sm text-gray-900 placeholder:text-gray-500 outline-none border border-border focus:border-primary transition-colors shadow-sm"
           />
         </div>
         <div className="flex gap-2 overflow-x-auto pb-1 hide-scrollbar">
@@ -112,7 +164,11 @@ const QuotesPage = () => {
           </div>
         ) : (
           filtered.map((q) => (
-            <div key={q.id} className="bg-card rounded-xl p-5 border border-border/50 shadow-sm hover:shadow-md hover:border-border transition-all relative group">
+            <div 
+              key={q.id} 
+              onClick={() => setSelectedQuote(q)}
+              className="bg-card rounded-xl p-5 border border-border/50 shadow-sm hover:shadow-md hover:border-border transition-all relative group cursor-pointer"
+            >
               <div className="flex items-start justify-between mb-2">
                 <div className="flex-1 min-w-0 pr-4">
                   <div className="flex items-center gap-2 mb-1">
@@ -144,6 +200,12 @@ const QuotesPage = () => {
                           Generate Invoice
                         </button>
                       )}
+                      <button 
+                         onClick={() => handleDuplicate(q)}
+                         className="w-full text-left px-4 py-2.5 text-sm font-medium text-foreground hover:bg-secondary transition-colors"
+                      >
+                         Duplicate Document
+                      </button>
                       {q.status !== 'ARCHIVED' && (
                          <button 
                           onClick={async () => {

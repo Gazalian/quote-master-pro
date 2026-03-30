@@ -10,6 +10,7 @@ import PriceLogPage from "@/pages/PriceLogPage";
 import BrandPage from "@/pages/BrandPage";
 import ProfilePage from "@/pages/ProfilePage";
 import AuthPage from "@/pages/AuthPage";
+import LandingPage from "@/pages/LandingPage";
 import { AuthProvider, useAuth } from "@/lib/AuthContext";
 
 const queryClient = new QueryClient();
@@ -27,7 +28,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   }
 
   if (!session) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/auth" replace />;
   }
 
   return <>{children}</>;
@@ -41,8 +42,9 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <Routes>
-            {/* Public Auth Route */}
-            <Route path="/" element={<AuthPage />} />
+            {/* Public Routes */}
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/auth" element={<AuthPage />} />
 
             {/* Protected App Routes */}
             <Route

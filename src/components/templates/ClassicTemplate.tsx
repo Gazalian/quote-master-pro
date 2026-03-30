@@ -18,10 +18,17 @@ export const ClassicTemplate = ({ quote, brand }: { quote: Quote; brand: BrandSe
               {quote.client}
             </p>
           </div>
-          <div className="text-right">
+          <div className="text-right flex flex-col items-end">
+             {brand.logoUrl && (
+               <img src={brand.logoUrl} alt="Logo" className="h-10 w-auto object-contain mb-2 bg-white/10 rounded p-1" />
+             )}
              <p className="text-white/70 text-xs">{quote.date}</p>
              <p className="text-white font-bold text-sm mt-0.5">{brand.companyName}</p>
-             <p className="text-white/80 text-[10px]">{brand.phone}</p>
+             {brand.rcNumber && <p className="text-white/70 text-[9px] mt-0.5">CAC: {brand.rcNumber}</p>}
+             {brand.address && <p className="text-white/80 text-[10px] max-w-[150px]">{brand.address}</p>}
+             {brand.contactPerson && <p className="text-white/80 text-[10px]">Attn: {brand.contactPerson}</p>}
+             {brand.phone && <p className="text-white/80 text-[10px] mt-0.5">{brand.phone}</p>}
+             {brand.email && <p className="text-white/80 text-[10px]">{brand.email}</p>}
           </div>
         </div>
         <p className="text-white/80 text-xs mt-1">{quote.description}</p>
@@ -79,7 +86,13 @@ export const ClassicTemplate = ({ quote, brand }: { quote: Quote; brand: BrandSe
       {/* Invoice Details */}
       {quote.status === "INVOICED" && brand.bankDetails && (
         <div className="px-4 py-4 border-t border-border" style={{ backgroundColor: `color-mix(in srgb, ${primaryColor} 5%, transparent)` }}>
-          <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: primaryColor }}>Payment Details</p>
+          <div className="flex justify-between items-start mb-3">
+             <p className="text-xs font-bold uppercase tracking-wide" style={{ color: primaryColor }}>Payment Details</p>
+             <div className="text-right">
+               <p className="text-xs font-semibold text-foreground">Deposit Required: <span className="font-bold">{formatNGN(quote.grandTotal * 0.7)}</span></p>
+               <p className="text-xs text-muted-foreground mt-0.5">Balance Due: {formatNGN(quote.grandTotal * 0.3)}</p>
+             </div>
+          </div>
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div>
               <p className="text-muted-foreground text-[10px] uppercase">Bank Name</p>

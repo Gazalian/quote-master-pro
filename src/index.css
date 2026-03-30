@@ -1,86 +1,91 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-
 @layer base {
   :root {
-    --background: 210 20% 98%;
-    --foreground: 220 40% 8%;
+    --background: 0 0% 98%;
+    --foreground: 215 25% 15%;
 
     --card: 0 0% 100%;
-    --card-foreground: 220 40% 8%;
+    --card-foreground: 215 25% 15%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 220 40% 8%;
+    --popover-foreground: 215 25% 15%;
 
-    --primary: 170 75% 31%;
+    /* Tech Blue #0056D2 - Primary brand color */
+    --primary: 212 100% 41%;
     --primary-foreground: 0 0% 100%;
 
+    /* Neutral UI Backgrounds (formerly Orange) */
     --secondary: 210 20% 96%;
-    --secondary-foreground: 220 40% 8%;
+    --secondary-foreground: 215 25% 15%;
 
     --muted: 210 20% 96%;
-    --muted-foreground: 215 16% 47%;
+    --muted-foreground: 215 16% 30%; /* Darkened for better text visibility */
 
-    --accent: 210 20% 96%;
-    --accent-foreground: 220 40% 8%;
+    --accent: 212 100% 96%; /* Light Blue accent */
+    --accent-foreground: 212 100% 41%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
     --border: 214 32% 91%;
     --input: 214 32% 91%;
-    --ring: 170 75% 31%;
+    --ring: 212 100% 41%; /* Tech Blue ring */
 
     --radius: 0.75rem;
 
-    /* ── Document / Quote brand colors (user-customisable) ───── */
-    --doc-primary: 170 75% 31%;
+    /* ── Document / Quote brand colors ───── */
+    --doc-primary: 212 100% 41%; /* Tech Blue */
     --doc-primary-foreground: 0 0% 100%;
-    --doc-secondary: 213 27% 34%;
+    --doc-secondary: 24 93% 54%; /* Signal Orange */
     --doc-secondary-foreground: 0 0% 100%;
 
     /* ── Chat tokens ─────────────────────────────────────────── */
-    --chat-bg: 34 33% 90%;
-    --bubble-user: 170 75% 31%;
+    --chat-bg: 210 20% 98%; /* Lighter gray for cleaner look */
+    --bubble-user: 212 100% 41%; /* Tech Blue */
     --bubble-user-foreground: 0 0% 100%;
     --bubble-ai: 0 0% 100%;
-    --bubble-ai-foreground: 220 40% 8%;
+    --bubble-ai-foreground: 215 25% 15%;
 
     /* ── Badge tokens ────────────────────────────────────────── */
-    --badge-pending: 38 92% 50%;
+    --badge-pending: 24 93% 54%; /* Signal Orange */
     --badge-pending-foreground: 0 0% 100%;
-    --badge-approved: 160 84% 39%;
+    --badge-approved: 142 76% 36%; /* Emerald Green #009A44 */
     --badge-approved-foreground: 0 0% 100%;
-    --badge-invoiced: 239 84% 67%;
+    --badge-invoiced: 212 100% 41%; /* Tech Blue */
     --badge-invoiced-foreground: 0 0% 100%;
     --badge-archived: 215 16% 47%;
     --badge-archived-foreground: 0 0% 100%;
-    --badge-ai: 239 84% 67%;
-    --badge-myprice: 160 84% 39%;
+    --badge-ai: 24 93% 54%; /* Signal Orange */
+    --badge-myprice: 142 76% 36%; /* Emerald Green */
 
     /* ── Nav tokens ──────────────────────────────────────────── */
     --nav-bg: 0 0% 100%;
-    --nav-active: 170 75% 31%;
+    --nav-active: 212 100% 41%; /* Tech Blue */
     --nav-inactive: 215 16% 47%;
 
     /* ── Sidebar tokens ──────────────────────────────────────── */
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-background: 0 0% 100%; /* Crisp white */
+    --sidebar-foreground: 215 25% 15%;
+    --sidebar-primary: 212 100% 41%; /* Tech Blue */
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 210 20% 96%; /* Neutral gray for hover */
+    --sidebar-accent-foreground: 212 100% 41%; /* Tech Blue */
     --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-ring: 212 100% 41%; /* Tech Blue */
   }
 }
 
 @layer base {
   * {
     @apply border-border;
+  }
+  html {
+    scroll-behavior: smooth;
   }
   body {
     @apply bg-background text-foreground font-sans antialiased;
