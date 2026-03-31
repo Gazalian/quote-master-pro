@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>OtoQuote AI – Professional Quotations for Nigerian Tradespeople</title>
     <meta name="description" content="Generate, edit, and share professional quotations via AI. Built for Nigerian electricians, plumbers, and builders." />
     <meta name="author" content="OtoQuote" />
@@ -16,6 +16,14 @@
     <meta property="og:description" content="AI-powered quotation app for Nigerian tradespeople" />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary" />
+    <!-- iOS Safari: fix 100vh including URL bar. Sets --app-height to the real visible height. -->
+    <script>
+      function setAppHeight() {
+        document.documentElement.style.setProperty('--app-height', window.innerHeight + 'px');
+      }
+      setAppHeight();
+      window.addEventListener('resize', setAppHeight);
+    </script>
   </head>
   <body>
     <div id="root"></div>

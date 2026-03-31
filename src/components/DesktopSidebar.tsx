@@ -14,7 +14,7 @@ export const DesktopSidebar = () => {
   ];
 
   return (
-    <aside className="hidden lg:flex flex-col w-[280px] bg-card border-r border-border h-screen sticky top-0">
+    <aside className="hidden lg:flex flex-col w-[280px] bg-card border-r border-border h-app sticky top-0">
       {/* App Logo / Header */}
       <div className="p-6 flex items-center gap-3 border-b border-border/50">
         <img

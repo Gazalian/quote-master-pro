@@ -84,12 +84,32 @@
   * {
     @apply border-border;
   }
+
+  /* iOS Safari: fill-available ensures html/body never taller than visible viewport */
   html {
     scroll-behavior: smooth;
+    height: -webkit-fill-available;
   }
   body {
     @apply bg-background text-foreground font-sans antialiased;
     font-family: 'Inter', sans-serif;
+    min-height: 100vh;
+    /* iOS Safari fallback — overridden by the JS --app-height variable */
+    min-height: -webkit-fill-available;
+  }
+}
+
+/* ── iOS-safe full-height utility ────────────────────────────
+   Use h-app instead of h-screen throughout the app.
+   Falls back gracefully: dvh → --app-height → 100vh            */
+@layer utilities {
+  .h-app {
+    height: 100vh;
+    height: var(--app-height, 100dvh);
+  }
+  .min-h-app {
+    min-height: 100vh;
+    min-height: var(--app-height, 100dvh);
   }
 }
 
