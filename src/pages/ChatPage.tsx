@@ -494,92 +494,124 @@ const ChatPage = () => {
   const ChatContent = (
     <div className="flex flex-col h-full bg-background relative">
       {!isDesktop && (
-        <ChatHistoryDrawer 
-           open={drawerOpen} 
-           onClose={() => setDrawerOpen(false)} 
-           sessions={sessions}
-           onSelectSession={loadSession}
-           onNewChat={startNewChat}
+        <ChatHistoryDrawer
+          open={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          sessions={sessions}
+          onSelectSession={loadSession}
+          onNewChat={startNewChat}
         />
       )}
 
-      {/* Top bar (mobile only) */}
+      {/* ── Mobile top bar ──────────────────────────────────────── */}
       {!isDesktop && (
-        <div className="flex items-center justify-between px-4 h-14 bg-primary shrink-0 lg:hidden">
+        <div className="flex items-center justify-between px-4 h-14 bg-white border-b border-gray-100 shrink-0 shadow-sm lg:hidden">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setDrawerOpen(true)}
-              className="text-primary-foreground"
+              className="w-9 h-9 flex items-center justify-center rounded-xl text-gray-500 hover:bg-gray-100 active:bg-gray-200 transition-colors"
             >
-              <Menu size={22} />
+              <Menu size={20} />
             </button>
-            <span className="text-primary-foreground font-semibold text-lg">OtoQuote AI</span>
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-[#0056D2] flex items-center justify-center">
+                <span className="text-white text-[10px] font-black">OQ</span>
+              </div>
+              <span className="font-semibold text-gray-900 text-[15px]">OtoQuote AI</span>
+            </div>
           </div>
+          {/* New chat shortcut */}
+          <button
+            onClick={startNewChat}
+            className="w-9 h-9 flex items-center justify-center rounded-xl text-[#0056D2] hover:bg-blue-50 active:bg-blue-100 transition-colors"
+            title="New chat"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 5v14M5 12h14"/>
+            </svg>
+          </button>
         </div>
       )}
 
-      {/* Chat body */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto bg-chat-bg px-3 py-4 space-y-4">
+      {/* ── Chat body ───────────────────────────────────────────── */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto bg-[#f0f2f5] px-3 py-4 space-y-3">
         {messages.map((msg) => (
           <div
             key={msg.id}
-            className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+            className={`flex items-end gap-2 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
           >
+            {/* AI avatar dot */}
+            {msg.role === "ai" && msg.type !== "quote" && (
+              <div className="w-7 h-7 rounded-full bg-[#0056D2] flex items-center justify-center shrink-0 mb-0.5 shadow-sm">
+                <span className="text-white text-[9px] font-black">OQ</span>
+              </div>
+            )}
+            {/* Spacer so AI quote cards align left without avatar */}
+            {msg.role === "ai" && msg.type === "quote" && !isDesktop && (
+              <div className="w-7 shrink-0" />
+            )}
+
             {msg.type === "image" ? (
-              <div className="max-w-[60%]">
+              <div className="max-w-[65%]">
                 <img
                   src={msg.imageUrl}
                   alt="Uploaded"
-                  className="rounded-xl border-2 border-border shadow-md max-h-[300px] object-cover"
+                  className="rounded-2xl border border-white/50 shadow-md max-h-[260px] w-full object-cover"
                 />
               </div>
             ) : msg.type === "quote" && !isDesktop ? (
-               <div className="w-full max-w-[95%]">
-                 {activeQuote ? (
-                   <QuoteCard
-                     quote={activeQuote}
-                     onQuoteSaved={(saved) => setActiveQuote(saved)}
-                     mode="chat"
-                   />
-
-                 ) : (
-                   <div className="text-sm bg-destructive/10 text-destructive p-4 rounded-xl border border-destructive/20">
-                     Quote data unavailable.
-                   </div>
-                 )}
-               </div>
-             ) : msg.type === "quote" && isDesktop ? (
-              <div
-                className="max-w-[80%] px-4 py-3 rounded-2xl text-[15px] bg-chat-bubble-ai text-chat-bubble-ai-fg rounded-bl-md shadow-sm border border-border"
-              >
+              <div className="flex-1 min-w-0">
+                {activeQuote ? (
+                  <QuoteCard
+                    quote={activeQuote}
+                    onQuoteSaved={(saved) => setActiveQuote(saved)}
+                    mode="chat"
+                  />
+                ) : (
+                  <div className="text-sm bg-destructive/10 text-destructive p-4 rounded-2xl border border-destructive/20">
+                    Quote data unavailable.
+                  </div>
+                )}
+              </div>
+            ) : msg.type === "quote" && isDesktop ? (
+              <div className="max-w-[75%] px-4 py-3 rounded-2xl rounded-bl-sm text-[14px] bg-white text-gray-700 shadow-sm border border-gray-100">
                 Quote generated and updated in the preview panel. 👉
+              </div>
+            ) : msg.id.endsWith("-ai-loading") ? (
+              /* Typing indicator */
+              <div className="px-4 py-3 bg-white rounded-2xl rounded-bl-sm shadow-sm border border-gray-100">
+                <div className="flex items-center gap-1.5 h-5">
+                  <span className="w-2 h-2 rounded-full bg-gray-400 animate-bounce [animation-delay:0ms]" />
+                  <span className="w-2 h-2 rounded-full bg-gray-400 animate-bounce [animation-delay:150ms]" />
+                  <span className="w-2 h-2 rounded-full bg-gray-400 animate-bounce [animation-delay:300ms]" />
+                </div>
               </div>
             ) : (
               <div
-                className={`max-w-[85%] px-4 py-3 rounded-2xl text-[15px] leading-relaxed relative group transition-all ${
+                className={`max-w-[78%] rounded-2xl text-[14px] leading-relaxed relative ${
                   msg.role === "user"
-                    ? "bg-[#0056D2] text-white shadow-sm rounded-br-sm ml-auto"
-                    : "bg-white text-gray-800 shadow-sm border border-gray-100 rounded-bl-sm"
+                    ? "bg-[#0056D2] text-white shadow-sm rounded-br-sm px-4 py-3"
+                    : "bg-white text-gray-800 shadow-sm border border-gray-100 rounded-bl-sm px-4 py-3"
                 }`}
               >
                 {editingMessageId === msg.id ? (
-                  <div className="flex flex-col gap-2 min-w-[200px]">
+                  <div className="flex flex-col gap-2 min-w-[220px]">
                     <textarea
                       value={editContent}
                       onChange={(e) => setEditContent(e.target.value)}
-                      className="w-full bg-white/10 text-white p-2 rounded-lg resize-none outline-none border border-white/20 focus:border-white text-sm min-h-[80px]"
+                      className="w-full bg-white/15 text-white p-2 rounded-xl resize-none outline-none border border-white/25 focus:border-white/60 text-sm min-h-[80px]"
                       autoFocus
                     />
-                    <div className="flex justify-end gap-2 text-white">
+                    <div className="flex justify-end gap-2">
                       <button
                         onClick={() => setEditingMessageId(null)}
-                        className="text-xs font-semibold px-3 py-1.5 rounded-md hover:bg-black/10 transition-colors"
+                        className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white transition-colors"
                       >
                         Cancel
                       </button>
                       <button
                         onClick={() => handleSaveEdit(msg.id)}
-                        className="text-xs font-semibold px-3 py-1.5 rounded-md bg-white text-[#0056D2] hover:bg-gray-50 transition-colors"
+                        className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-white text-[#0056D2] hover:bg-gray-50 transition-colors"
                       >
                         Update
                       </button>
@@ -587,21 +619,22 @@ const ChatPage = () => {
                   </div>
                 ) : (
                   <>
-                    <div className="flex items-center gap-2">
-                       {msg.id.endsWith("-ai-loading") && <Loader2 className="w-4 h-4 animate-spin shrink-0 opacity-70" />}
-                      <p className="whitespace-pre-wrap">{msg.content}</p>
-                    </div>
+                    <p className="whitespace-pre-wrap">{msg.content}</p>
+                    {/* Edit + Edited row — always visible on mobile, no hover needed */}
                     {msg.role === "user" && !isGenerating && (
-                      <button
-                        onClick={() => startEditing(msg)}
-                        className="absolute -left-10 top-2 p-1.5 text-gray-400 hover:text-gray-600 opacity-0 group-hover:opacity-100 transition-all rounded-full hover:bg-white shadow-sm border border-transparent hover:border-gray-200"
-                        title="Edit prompt"
-                      >
-                        <Pencil size={14} />
-                      </button>
-                    )}
-                    {msg.isEdited && (
-                       <span className={`text-[10px] opacity-70 absolute -bottom-5 right-1 ${msg.role === "user" ? "text-gray-400" : "text-gray-400"}`}>Edited</span>
+                      <div className="flex items-center justify-end gap-2 mt-1.5">
+                        {msg.isEdited && (
+                          <span className="text-[10px] text-white/60">edited</span>
+                        )}
+                        <button
+                          onClick={() => startEditing(msg)}
+                          className="flex items-center gap-1 text-white/60 hover:text-white/90 transition-colors"
+                          title="Edit message"
+                        >
+                          <Pencil size={11} />
+                          <span className="text-[10px]">Edit</span>
+                        </button>
+                      </div>
                     )}
                   </>
                 )}
@@ -609,34 +642,37 @@ const ChatPage = () => {
             )}
           </div>
         ))}
+        {/* Bottom padding so last message clears the input bar */}
+        <div className="h-2" />
       </div>
 
-      {/* Input bar */}
-      <div className="px-4 py-4 bg-white border-t border-gray-100 shrink-0">
-        <div className="max-w-3xl mx-auto">
-          {/* Image previews */}
-          {selectedImages.length > 0 && (
-            <div className="flex gap-2 flex-wrap mb-3 px-1">
-              {selectedImages.map((img, idx) => (
-                <div key={idx} className="relative group">
-                  <img
-                    src={URL.createObjectURL(img)}
-                    alt={`Upload ${idx + 1}`}
-                    className="w-16 h-16 object-cover rounded-xl border border-gray-200 shadow-sm"
-                  />
-                  <button
-                    onClick={() => setSelectedImages(prev => prev.filter((_, i) => i !== idx))}
-                    className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
-                  >
-                    <X size={12} strokeWidth={3} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
+      {/* ── Input bar ───────────────────────────────────────────── */}
+      <div className="px-3 py-3 bg-white border-t border-gray-100 shrink-0">
+        {/* Image previews */}
+        {selectedImages.length > 0 && (
+          <div className="flex gap-2 flex-wrap mb-2 px-1">
+            {selectedImages.map((img, idx) => (
+              <div key={idx} className="relative">
+                <img
+                  src={URL.createObjectURL(img)}
+                  alt={`Upload ${idx + 1}`}
+                  className="w-14 h-14 object-cover rounded-xl border border-gray-200 shadow-sm"
+                />
+                {/* Always-visible remove button for touch devices */}
+                <button
+                  onClick={() => setSelectedImages(prev => prev.filter((_, i) => i !== idx))}
+                  className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center shadow-sm"
+                >
+                  <X size={11} strokeWidth={3} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
 
-          <div className="relative flex items-end w-full bg-gray-50 border border-gray-200 rounded-[24px] shadow-sm focus-within:bg-white focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary transition-all duration-200">
-            {/* Hidden File Input */}
+        <div className="flex items-end gap-2">
+          {/* Attachment */}
+          <div className="relative shrink-0">
             <input
               ref={fileInputRef}
               type="file"
@@ -645,26 +681,27 @@ const ChatPage = () => {
               onChange={(e) => {
                 const files = Array.from(e.target.files || []);
                 setSelectedImages(prev => [...prev, ...files].slice(0, 5));
-                e.target.value = ""; 
+                e.target.value = "";
               }}
               className="hidden"
             />
-            {/* Attachment Button */}
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="p-3 mb-0.5 ml-1 text-gray-400 hover:text-gray-700 transition-colors shrink-0 relative rounded-full hover:bg-gray-100"
               disabled={isGenerating}
+              className="w-10 h-10 flex items-center justify-center rounded-2xl bg-gray-100 text-gray-500 active:bg-gray-200 transition-colors disabled:opacity-40"
               title="Attach image"
             >
-              <Image size={22} className={isGenerating ? "opacity-50" : ""} />
+              <Image size={19} />
               {selectedImages.length > 0 && (
-                <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-primary text-white text-[9px] font-bold rounded-full flex items-center justify-center ring-2 ring-white border-none">
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#0056D2] text-white text-[8px] font-bold rounded-full flex items-center justify-center">
                   {selectedImages.length}
                 </span>
               )}
             </button>
+          </div>
 
-            {/* Textarea */}
+          {/* Textarea pill */}
+          <div className="flex-1 flex items-end bg-gray-100 rounded-[22px] px-4 py-2 border border-transparent focus-within:border-[#0056D2]/30 focus-within:bg-white transition-all duration-200">
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -674,48 +711,40 @@ const ChatPage = () => {
                   handleSend();
                 }
               }}
-              placeholder="Message OtoQuote AI..."
-              className="flex-1 bg-transparent py-3.5 px-2 text-[15px] text-gray-900 placeholder:text-gray-400 outline-none resize-none"
+              placeholder="Type your job description..."
+              className="flex-1 bg-transparent text-[14px] text-gray-900 placeholder:text-gray-400 outline-none resize-none"
               disabled={isGenerating}
               rows={1}
-              style={{
-                minHeight: '52px',
-                maxHeight: '200px',
-                height: '52px'
-              }}
+              style={{ minHeight: '24px', maxHeight: '120px', lineHeight: '1.5' }}
               onInput={(e) => {
-                const target = e.target as HTMLTextAreaElement;
-                target.style.height = '52px';
-                target.style.height = Math.min(target.scrollHeight, 200) + 'px';
-                target.style.overflowY = target.scrollHeight > 200 ? 'auto' : 'hidden';
+                const t = e.target as HTMLTextAreaElement;
+                t.style.height = '24px';
+                t.style.height = Math.min(t.scrollHeight, 120) + 'px';
+                t.style.overflowY = t.scrollHeight > 120 ? 'auto' : 'hidden';
               }}
             />
+          </div>
 
-            {/* Right Buttons group (Mic or Send) */}
-            <div className="flex items-center justify-center p-2 mb-0.5 mr-0.5 shrink-0 min-w-[48px]">
-              {input.trim() ? (
-                <button
-                  onClick={handleSend}
-                  disabled={isGenerating}
-                  className="w-10 h-10 flex items-center justify-center bg-[#0056D2] text-white rounded-full shadow-md hover:opacity-90 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isGenerating ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} className="ml-0.5" />}
-                </button>
-              ) : (
-                <button 
-                  onClick={() => toast.info("Voice input coming soon!", { description: "Please type your message for now." })}
-                  className="w-10 h-10 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-200/50 rounded-full transition-colors disabled:opacity-50"
-                  disabled={isGenerating}
-                  title="Voice message"
-                >
-                  <Mic size={22} />
-                </button>
-              )}
-            </div>
-          </div>
-          <div className="text-center mt-3 text-[11px] text-gray-400">
-            OtoQuote AI can make mistakes. Check important info.
-          </div>
+          {/* Send / Mic */}
+          {input.trim() || isGenerating ? (
+            <button
+              onClick={handleSend}
+              disabled={isGenerating}
+              className="w-10 h-10 shrink-0 flex items-center justify-center bg-[#0056D2] text-white rounded-full shadow-md active:scale-95 transition-all disabled:opacity-60"
+            >
+              {isGenerating
+                ? <Loader2 size={17} className="animate-spin" />
+                : <Send size={17} className="ml-0.5" />}
+            </button>
+          ) : (
+            <button
+              onClick={() => toast.info("Voice input coming soon!", { description: "Please type your message for now." })}
+              disabled={isGenerating}
+              className="w-10 h-10 shrink-0 flex items-center justify-center bg-gray-100 text-gray-500 rounded-full active:bg-gray-200 transition-colors"
+            >
+              <Mic size={19} />
+            </button>
+          )}
         </div>
       </div>
     </div>
