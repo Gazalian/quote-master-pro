@@ -10,6 +10,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { quoteAPI } from "@/lib/api";
 import { toast } from "sonner";
 import { exportToPDF } from "@/lib/pdfExport";
+import { accumulateEditDelta } from "@/lib/behaviorEngine";
 
 export const QuoteCard = ({ quote, onQuoteSaved, mode = "dashboard" }: { quote: Quote, onQuoteSaved?: (quote: Quote) => void, mode?: "chat" | "dashboard" }) => {
   const { user } = useAuth();
@@ -73,21 +74,25 @@ export const QuoteCard = ({ quote, onQuoteSaved, mode = "dashboard" }: { quote: 
       <QuoteEditor
         quote={currentQuote}
         onClose={() => setEditing(false)}
-        onSave={async (updated) => { 
+        onSave={async (updated) => {
           // If the quote is not a draft and has an ID, update it in the database
           if (!updated.isDraft && updated.id) {
             try {
               // we don't want to override generated dates when updating content
               const payload = { ...updated };
-              delete (payload as any).date; 
+              delete (payload as any).date;
               await quoteAPI.updateQuote(updated.id, payload);
             } catch (e) {
               console.error("Failed to update quote in database", e);
             }
           }
-          setCurrentQuote(updated); 
+          // Fire-and-forget: capture the diff between original draft and user's edits
+          if (user) {
+            accumulateEditDelta(user.id, currentQuote, updated);
+          }
+          setCurrentQuote(updated);
           onQuoteSaved?.(updated);
-          setEditing(false); 
+          setEditing(false);
         }}
       />
     );
@@ -156,7 +161,20 @@ export const QuoteCard = ({ quote, onQuoteSaved, mode = "dashboard" }: { quote: 
                      {group.items.map(item => (
                        <div key={item.id} className="flex justify-between items-start gap-3">
                          <div className="flex-1 min-w-0">
-                           <p className="text-sm font-medium text-foreground leading-tight">{item.name}</p>
+                           <div className="flex items-center gap-1.5 flex-wrap">
+                             <p className="text-sm font-medium text-foreground leading-tight">{item.name}</p>
+                             {item.source === 'my_price' && (
+                               <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 border border-green-200 shrink-0">MY PRICE</span>
+                             )}
+                             {item.source === 'regional_price' && (
+                               <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 border border-orange-200 shrink-0">
+                                 REGIONAL{item.regionName ? ` · ${item.regionName}` : ''}
+                               </span>
+                             )}
+                             {item.source === 'ai_estimate' && (
+                               <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 border border-gray-200 shrink-0">AI EST.</span>
+                             )}
+                           </div>
                            <p className="text-[11px] text-muted-foreground mt-0.5">
                              {item.qty} {item.unit} × ₦{item.unitPrice.toLocaleString("en-NG")}
                            </p>
@@ -223,10 +241,16 @@ export const QuoteCard = ({ quote, onQuoteSaved, mode = "dashboard" }: { quote: 
       }
     })();
 
-    // Wrap in a div with unique ID for PDF export
+    // Outer scroll wrapper so the template never breaks the mobile layout.
+    // The inner div carries the PDF-export id.
     return (
-      <div id={`quote-template-${currentQuote.id}`}>
-        {templateElement}
+      <div className="w-full overflow-x-auto rounded-xl border border-border shadow-sm bg-white">
+        <div
+          id={`quote-template-${currentQuote.id}`}
+          style={{ minWidth: "320px" }}
+        >
+          {templateElement}
+        </div>
       </div>
     );
   };

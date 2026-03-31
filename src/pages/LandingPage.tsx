@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import PWAInstallPrompt from '@/components/PWAInstallPrompt';
 import {
   MessageSquare,
   Camera,
@@ -36,6 +37,7 @@ const LandingPage = () => {
 
   return (
     <div className="min-h-screen bg-white">
+      <PWAInstallPrompt />
       {/* Navigation */}
       <nav className="sticky top-0 z-50 w-full border-b border-gray-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">

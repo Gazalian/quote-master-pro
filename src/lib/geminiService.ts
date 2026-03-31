@@ -1,6 +1,8 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { Quote, QuoteGroup, QuoteItem } from '@/types/quote';
-import { getPricingForTrade, formatNGN } from './nigerianPricing';
+import { Quote, QuoteGroup } from '@/types/quote';
+import { getPricingForTrade } from './nigerianPricing';
+import type { RegionalPriceEntry } from './regionalPriceAPI';
+import { buildPreferencesPrompt, type UserPreferences } from './behaviorEngine';
 
 // Initialize Gemini AI
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
@@ -18,7 +20,9 @@ export interface GeminiQuoteRequest {
   conversationHistory?: ConversationMessage[];
   userTrade?: string;
   userLocation?: string;
-  priceLogEntries?: any[]; // User's saved prices from price log
+  priceLogEntries?: any[];         // User's saved prices (highest priority)
+  regionalPrices?: RegionalPriceEntry[]; // Regional consensus prices (second priority)
+  userPreferences?: UserPreferences | null; // Learned behavior rules (prepended to system prompt)
 }
 
 export interface ConversationMessage {
@@ -54,10 +58,42 @@ async function fileToGenerativePart(file: File) {
 }
 
 // Build comprehensive system prompt
-function buildSystemPrompt(trade: string = 'general', location: string = 'Lagos'): string {
-  const pricing = getPricingForTrade(trade);
+function buildSystemPrompt(
+  trade: string = 'general',
+  location: string = 'Nigeria',
+  regionalPrices: RegionalPriceEntry[] = [],
+  userPreferences: UserPreferences | null = null
+): string {
+  getPricingForTrade(trade); // loads trade-specific pricing context
 
-  return `You are OtoQuote AI, Nigeria's leading digital assistant for tradespeople.
+  // ── Regional consensus block ─────────────────────────────────────────
+  const consensusPrices = regionalPrices.filter(p => p.isConsensus);
+  const otherRegional   = regionalPrices.filter(p => !p.isConsensus);
+
+  const regionalBlock = regionalPrices.length > 0 ? `
+REGIONAL MARKET CONSENSUS — ${location.toUpperCase()} (SECOND-HIGHEST PRIORITY):
+The following prices have been verified by real tradespeople operating in ${location}.
+Use these when the user has no personal price saved for an item.
+When you use one of these prices, set its "source" field to "regional_price".
+
+VERIFIED CONSENSUS PRICES (≥5 tradespeople agree, high confidence):
+${consensusPrices.length > 0
+  ? consensusPrices.map(p =>
+      `  - ${p.materialName}: ₦${p.medianPriceNgn.toLocaleString('en-NG')} (${p.contributorCount} contributors)`
+    ).join('\n')
+  : '  (none yet for this state)'}
+
+INDICATIVE REGIONAL PRICES (fewer contributors, use with care):
+${otherRegional.length > 0
+  ? otherRegional.map(p =>
+      `  - ${p.materialName}: ₦${p.medianPriceNgn.toLocaleString('en-NG')} (${p.contributorCount} contributor${p.contributorCount !== 1 ? 's' : ''})`
+    ).join('\n')
+  : '  (none yet for this state)'}
+` : '';
+
+  const preferencesBlock = buildPreferencesPrompt(userPreferences);
+
+  return `${preferencesBlock}You are OtoQuote AI, Nigeria's leading digital assistant for tradespeople.
 
 YOUR ROLE:
 You help Nigerian ${trade}s (and other tradespeople) create professional quotations.
@@ -78,26 +114,29 @@ NIGERIAN CONTEXT (CRITICAL):
 - Miscellaneous for unforeseen costs (typically 5-10%)
 - VAT is NOT typically included in artisan quotes
 
-PRICING INTELLIGENCE:
+PRICING HIERARCHY (follow this order strictly):
+1. USER'S PERSONAL PRICE LOG — injected in the user prompt (HIGHEST PRIORITY). Always use exact.
+2. REGIONAL MARKET CONSENSUS — injected below. Use when no personal price exists. Set source = "regional_price".
+3. NATIONAL NIGERIAN BASELINE — your general knowledge. Fallback only. Set source = "ai_estimate".
+${regionalBlock}
+NATIONAL BASELINE PRICING INTELLIGENCE:
 ${trade === 'electrician' || trade === 'electrical' ? `
-Sample Electrical Prices (Lagos market):
+Sample Electrical Prices (Lagos baseline):
 - 16mm cable: ₦18,000-₦25,000 per roll
 - Socket (13A): ₦500-₦1,200 each
 - MCB breaker: ₦2,000-₦4,000 each
 - Bedroom wiring labour: ₦40,000-₦80,000 per room
 - Installation per point: ₦2,000-₦5,000
 ` : ''}
-
 ${trade === 'plumber' || trade === 'plumbing' ? `
-Sample Plumbing Prices (Lagos market):
+Sample Plumbing Prices (Lagos baseline):
 - 4-inch PVC pipe: ₦4,000-₦7,000 per length
 - Toilet WC: ₦35,000-₦120,000 (standard to premium)
 - Kitchen sink: ₦15,000-₦60,000
 - Bathroom installation labour: ₦60,000-₦150,000
 ` : ''}
-
 ${trade === 'builder' || trade === 'building' || trade === 'construction' ? `
-Sample Building Prices (Lagos market):
+Sample Building Prices (Lagos baseline):
 - Cement (Dangote): ₦5,500-₦7,500 per bag
 - Sharp sand: ₦25,000-₦45,000 per trip
 - Granite: ₦30,000-₦55,000 per trip
@@ -105,9 +144,8 @@ Sample Building Prices (Lagos market):
 - Bricklaying labour: ₦1,500-₦2,800 per sqm
 - Plastering labour: ₦2,000-₦3,500 per sqm
 ` : ''}
-
 ${trade === 'painter' || trade === 'painting' ? `
-Sample Painting Prices (Lagos market):
+Sample Painting Prices (Lagos baseline):
 - Emulsion paint (standard): ₦15,000-₦25,000 per bucket
 - Gloss paint: ₦10,000-₦20,000 per bucket
 - Putty: ₦4,000-₦8,000 per bucket
@@ -142,7 +180,8 @@ OUTPUT REQUIREMENTS:
           "unit": "meters" | "pieces" | "bags" | "rolls" | "sqm" | "rooms" | etc,
           "unitPrice": number (in Naira),
           "total": number (quantity * unitPrice),
-          "source": "ai_estimate"
+          "source": "my_price" | "regional_price" | "ai_estimate",
+          "regionName": "State name — only set when source is regional_price, else omit"
         }
       ]
     }
@@ -151,6 +190,11 @@ OUTPUT REQUIREMENTS:
   "estimatedDuration": "X days" OR null,
   "notes": ["Important note 1", "Important note 2"] OR null
 }
+
+SOURCE RULES:
+- "my_price"       — item matched user's personal price log (inject exact price, never change it)
+- "regional_price" — item matched Regional Market Consensus above; also set regionName = "${location}"
+- "ai_estimate"    — everything else (national baseline fallback)
 
 QUALITY STANDARDS:
 - Be SPECIFIC with item names (not "cables" but "16mm Single Core Cable")
@@ -299,7 +343,8 @@ function buildQuoteFromParsed(parsed: any, userId: string): { quote: Partial<Quo
         unit: item.unit || 'unit',
         unitPrice: item.unitPrice || 0,
         total: item.total || ((item.quantity || 1) * (item.unitPrice || 0)),
-        source: item.source || 'ai_estimate'
+        source: item.source || 'ai_estimate',
+        ...(item.regionName ? { regionName: item.regionName } : {}),
       }))
   }));
 
@@ -404,7 +449,12 @@ export async function generateQuoteWithGemini(
   const hasImages = request.images && request.images.length > 0;
 
   // Build prompts (same for every model attempt)
-  const systemPrompt = buildSystemPrompt(request.userTrade || 'general', request.userLocation || 'Lagos');
+  const systemPrompt = buildSystemPrompt(
+    request.userTrade    || 'general',
+    request.userLocation || 'Nigeria',
+    request.regionalPrices || [],
+    request.userPreferences ?? null
+  );
   const userPrompt = buildUserPrompt(request);
 
   // Prepare content parts

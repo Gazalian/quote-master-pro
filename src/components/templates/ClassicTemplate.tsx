@@ -1,118 +1,328 @@
 import { Quote, BrandSettings } from "@/types/quote";
 
 export const formatNGN = (amount: number) =>
-  `₦${amount.toLocaleString("en-NG")}`;
+  `₦${amount.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export const ClassicTemplate = ({ quote, brand }: { quote: Quote; brand: BrandSettings }) => {
-  const primaryColor = brand.docPrimary ? `hsl(${brand.docPrimary})` : "var(--doc-primary)";
-  const secondaryColor = brand.docSecondary ? `hsl(${brand.docSecondary})` : "var(--doc-secondary)";
+  const primaryColor = brand.docPrimary ? `hsl(${brand.docPrimary})` : "#0f8a6e";
+  const secondaryColor = brand.docSecondary ? `hsl(${brand.docSecondary})` : "#475569";
 
   return (
-    <div className="bg-card rounded-xl shadow-sm overflow-hidden border border-border" style={{ '--local-primary': primaryColor, '--local-secondary': secondaryColor } as React.CSSProperties}>
-      {/* Header */}
-      <div className="px-4 py-3" style={{ backgroundColor: primaryColor }}>
-        <div className="flex justify-between items-start">
-          <div>
-            <p className="text-white/70 text-xs font-medium">{quote.ref}</p>
-            <p className="text-white font-semibold text-sm mt-0.5">
+    <div
+      className="bg-white text-gray-900"
+      style={{
+        fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
+        fontSize: "10pt",
+        lineHeight: "1.4",
+        width: "100%",
+        maxWidth: "794px",
+        margin: "0 auto",
+        borderRadius: "10px",
+        overflow: "hidden",
+        border: "1px solid #e5e7eb",
+        boxSizing: "border-box",
+      }}
+    >
+      {/* ── HEADER ── */}
+      <div style={{ backgroundColor: primaryColor, padding: "16px 16px 12px" }}>
+        {/* Top: ref + company — wraps on narrow screens */}
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: "10px",
+          }}
+        >
+          {/* Left */}
+          <div style={{ flex: "1 1 160px" }}>
+            <div style={{ color: "rgba(255,255,255,0.7)", fontSize: "8pt" }}>{quote.ref}</div>
+            <div style={{ color: "#fff", fontWeight: 600, fontSize: "12pt", marginTop: "2px" }}>
               {quote.client}
-            </p>
+            </div>
+            <div
+              style={{
+                display: "inline-block",
+                backgroundColor: "rgba(255,255,255,0.2)",
+                color: "#fff",
+                fontWeight: 700,
+                fontSize: "9pt",
+                letterSpacing: "1px",
+                padding: "2px 10px",
+                borderRadius: "4px",
+                marginTop: "6px",
+              }}
+            >
+              {quote.status === "INVOICED" ? "INVOICE" : "QUOTATION"}
+            </div>
           </div>
-          <div className="text-right flex flex-col items-end">
-             {brand.logoUrl && (
-               <img src={brand.logoUrl} alt="Logo" className="h-10 w-auto object-contain mb-2 bg-white/10 rounded p-1" />
-             )}
-             <p className="text-white/70 text-xs">{quote.date}</p>
-             <p className="text-white font-bold text-sm mt-0.5">{brand.companyName}</p>
-             {brand.rcNumber && <p className="text-white/70 text-[9px] mt-0.5">CAC: {brand.rcNumber}</p>}
-             {brand.address && <p className="text-white/80 text-[10px] max-w-[150px]">{brand.address}</p>}
-             {brand.contactPerson && <p className="text-white/80 text-[10px]">Attn: {brand.contactPerson}</p>}
-             {brand.phone && <p className="text-white/80 text-[10px] mt-0.5">{brand.phone}</p>}
-             {brand.email && <p className="text-white/80 text-[10px]">{brand.email}</p>}
+
+          {/* Right */}
+          <div style={{ flex: "0 1 auto", textAlign: "right" }}>
+            {brand.logoUrl && (
+              <img
+                src={brand.logoUrl}
+                alt="Logo"
+                style={{
+                  height: "40px",
+                  width: "auto",
+                  objectFit: "contain",
+                  marginBottom: "6px",
+                  backgroundColor: "rgba(255,255,255,0.15)",
+                  borderRadius: "4px",
+                  padding: "3px",
+                }}
+              />
+            )}
+            <div style={{ color: "#fff", fontWeight: 700, fontSize: "11pt" }}>{brand.companyName}</div>
+            {brand.rcNumber && (
+              <div style={{ color: "rgba(255,255,255,0.7)", fontSize: "8pt" }}>CAC: {brand.rcNumber}</div>
+            )}
+            {brand.address && (
+              <div style={{ color: "rgba(255,255,255,0.8)", fontSize: "8pt", maxWidth: "180px", marginLeft: "auto" }}>
+                {brand.address}
+              </div>
+            )}
+            {brand.phone && (
+              <div style={{ color: "rgba(255,255,255,0.8)", fontSize: "8pt" }}>{brand.phone}</div>
+            )}
+            {brand.email && (
+              <div style={{ color: "rgba(255,255,255,0.8)", fontSize: "8pt" }}>{brand.email}</div>
+            )}
+            <div style={{ color: "rgba(255,255,255,0.7)", fontSize: "8pt", marginTop: "4px" }}>
+              {quote.date}
+            </div>
           </div>
         </div>
-        <p className="text-white/80 text-xs mt-1">{quote.description}</p>
+
+        {/* Description */}
+        {quote.description && (
+          <div
+            style={{
+              color: "rgba(255,255,255,0.85)",
+              fontSize: "8pt",
+              marginTop: "8px",
+              borderTop: "1px solid rgba(255,255,255,0.2)",
+              paddingTop: "6px",
+            }}
+          >
+            {quote.description}
+          </div>
+        )}
       </div>
 
-      {/* Groups */}
-      <div className="divide-y divide-border border-b border-border">
+      {/* ── GROUPS ── */}
+      <div style={{ borderBottom: "1px solid #e5e7eb" }}>
         {quote.groups.map((group, gi) => {
           const subtotal = group.items.reduce((s, i) => s + i.total, 0);
           return (
-            <div key={gi} className="px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: secondaryColor }}>
+            <div
+              key={gi}
+              style={{
+                padding: "12px 16px",
+                borderBottom: gi < quote.groups.length - 1 ? "1px solid #e5e7eb" : "none",
+              }}
+            >
+              {/* Group heading */}
+              <div
+                style={{
+                  fontSize: "8pt",
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                  color: secondaryColor,
+                  marginBottom: "8px",
+                }}
+              >
                 {gi + 1}. {group.name}
-              </p>
-              <div className="space-y-1.5">
+              </div>
+
+              {/* Items */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                 {group.items.map((item, ii) => (
-                  <div key={ii} className="flex items-start justify-between gap-2 text-sm">
-                    <div className="flex-1 min-w-0">
-                      <span className="text-foreground">{item.name}</span>
-                      <span className="text-muted-foreground text-xs ml-1">
+                  <div
+                    key={ii}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "flex-start",
+                      gap: "8px",
+                      fontSize: "9pt",
+                    }}
+                  >
+                    {/* Item name + spec */}
+                    <div style={{ flex: "1 1 0", minWidth: 0 }}>
+                      <div style={{ fontWeight: 500, color: "#111827", wordBreak: "break-word" }}>
+                        {item.name}
+                      </div>
+                      <div style={{ fontSize: "8pt", color: "#6b7280", marginTop: "1px" }}>
                         {item.qty} {item.unit} × {formatNGN(item.unitPrice)}
-                      </span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <span className="font-medium text-foreground">{formatNGN(item.total)}</span>
-                      <span
-                        className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
-                          item.source === "my_price"
-                            ? "bg-badge-approved/15 text-badge-myprice"
-                            : "bg-badge-invoiced/15 text-badge-ai"
-                        }`}
+
+                    {/* Amount + source badge */}
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <div style={{ fontWeight: 600, color: "#111827", fontVariantNumeric: "tabular-nums" }}>
+                        {formatNGN(item.total)}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: "7pt",
+                          fontWeight: 700,
+                          padding: "2px 5px",
+                          borderRadius: "999px",
+                          backgroundColor:
+                            item.source === "my_price"
+                              ? "rgba(16,185,129,0.15)"
+                              : item.source === "regional_price"
+                              ? "rgba(245,130,32,0.15)"
+                              : "rgba(156,163,175,0.25)",
+                          color:
+                            item.source === "my_price"
+                              ? "#065f46"
+                              : item.source === "regional_price"
+                              ? "#9a4a00"
+                              : "#6b7280",
+                          whiteSpace: "nowrap",
+                        }}
                       >
-                        {item.source === "my_price" ? "MY PRICE" : "AI EST."}
-                      </span>
+                        {item.source === "my_price"
+                          ? "MY PRICE"
+                          : item.source === "regional_price"
+                          ? `REGIONAL${item.regionName ? ` · ${item.regionName}` : ""}`
+                          : "AI EST."}
+                      </div>
                     </div>
                   </div>
                 ))}
               </div>
-              <div className="flex justify-end mt-2 pt-1.5 border-t border-border/50">
-                <span className="text-xs font-medium text-muted-foreground">
-                  Subtotal: {formatNGN(subtotal)}
-                </span>
+
+              {/* Subtotal */}
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  marginTop: "8px",
+                  paddingTop: "6px",
+                  borderTop: "1px solid #f3f4f6",
+                  fontSize: "8pt",
+                  color: "#6b7280",
+                  fontWeight: 500,
+                }}
+              >
+                Subtotal: {formatNGN(subtotal)}
               </div>
             </div>
           );
         })}
       </div>
 
-      {/* Grand Total */}
-      <div className="bg-secondary/50 px-4 py-3 flex justify-between items-center">
-        <span className="font-semibold text-sm text-foreground">Grand Total</span>
-        <span className="font-bold text-lg" style={{ color: primaryColor }}>{formatNGN(quote.grandTotal)}</span>
+      {/* ── GRAND TOTAL ── */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          padding: "12px 16px",
+          backgroundColor: "#f9fafb",
+        }}
+      >
+        <div style={{ fontWeight: 600, fontSize: "11pt", color: "#111827" }}>Grand Total</div>
+        <div style={{ fontWeight: 800, fontSize: "16pt", color: primaryColor, fontVariantNumeric: "tabular-nums" }}>
+          {formatNGN(quote.grandTotal)}
+        </div>
       </div>
 
-      {/* Invoice Details */}
+      {/* ── PAYMENT DETAILS (Invoice only) ── */}
       {quote.status === "INVOICED" && brand.bankDetails && (
-        <div className="px-4 py-4 border-t border-border" style={{ backgroundColor: `color-mix(in srgb, ${primaryColor} 5%, transparent)` }}>
-          <div className="flex justify-between items-start mb-3">
-             <p className="text-xs font-bold uppercase tracking-wide" style={{ color: primaryColor }}>Payment Details</p>
-             <div className="text-right">
-               <p className="text-xs font-semibold text-foreground">Deposit Required: <span className="font-bold">{formatNGN(quote.grandTotal * 0.7)}</span></p>
-               <p className="text-xs text-muted-foreground mt-0.5">Balance Due: {formatNGN(quote.grandTotal * 0.3)}</p>
-             </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <div>
-              <p className="text-muted-foreground text-[10px] uppercase">Bank Name</p>
-              <p className="font-medium text-foreground">{brand.bankDetails.bankName}</p>
+        <div
+          style={{
+            padding: "14px 16px",
+            borderTop: "1px solid #e5e7eb",
+            backgroundColor: `rgba(15,138,110,0.04)`,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              gap: "8px",
+              marginBottom: "10px",
+            }}
+          >
+            <div style={{ fontSize: "8pt", fontWeight: 700, textTransform: "uppercase", color: primaryColor }}>
+              Payment Details
             </div>
-            <div>
-              <p className="text-muted-foreground text-[10px] uppercase">Account Number</p>
-              <p className="font-medium text-foreground">{brand.bankDetails.accountNumber}</p>
-            </div>
-            <div className="col-span-2">
-              <p className="text-muted-foreground text-[10px] uppercase">Account Name</p>
-              <p className="font-medium text-foreground">{brand.bankDetails.accountName}</p>
+            <div style={{ textAlign: "right", fontSize: "8pt" }}>
+              <div style={{ fontWeight: 600 }}>
+                Deposit Required:{" "}
+                <strong>{formatNGN(quote.grandTotal * 0.7)}</strong>
+              </div>
+              <div style={{ color: "#6b7280", marginTop: "2px" }}>
+                Balance Due: {formatNGN(quote.grandTotal * 0.3)}
+              </div>
             </div>
           </div>
-          <div className="mt-4 pt-3 border-t border-border/50">
-            <p className="text-muted-foreground text-[10px] uppercase">Payment Terms</p>
-            <p className="text-xs text-foreground mt-0.5 whitespace-pre-wrap">{brand.bankDetails.paymentTerms}</p>
+
+          {/* Bank details grid — 2-col on wide, 1-col on narrow */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+              gap: "8px",
+              fontSize: "9pt",
+            }}
+          >
+            {[
+              ["Bank Name", brand.bankDetails.bankName],
+              ["Account Number", brand.bankDetails.accountNumber],
+            ].map(([label, val]) => (
+              <div key={label}>
+                <div style={{ fontSize: "7pt", textTransform: "uppercase", color: "#9ca3af" }}>{label}</div>
+                <div style={{ fontWeight: 500 }}>{val}</div>
+              </div>
+            ))}
+            <div style={{ gridColumn: "1 / -1" }}>
+              <div style={{ fontSize: "7pt", textTransform: "uppercase", color: "#9ca3af" }}>Account Name</div>
+              <div style={{ fontWeight: 500 }}>{brand.bankDetails.accountName}</div>
+            </div>
           </div>
+
+          {brand.bankDetails.paymentTerms && (
+            <div style={{ marginTop: "10px", paddingTop: "8px", borderTop: "1px solid #e5e7eb" }}>
+              <div style={{ fontSize: "7pt", textTransform: "uppercase", color: "#9ca3af" }}>Payment Terms</div>
+              <div style={{ fontSize: "8pt", color: "#374151", marginTop: "2px", whiteSpace: "pre-wrap" }}>
+                {brand.bankDetails.paymentTerms}
+              </div>
+            </div>
+          )}
         </div>
       )}
+
+      {/* ── FOOTER ── */}
+      <div
+        style={{
+          textAlign: "center",
+          padding: "10px 16px",
+          borderTop: `3px solid ${primaryColor}`,
+          backgroundColor: "#f9fafb",
+        }}
+      >
+        <div style={{ fontSize: "8pt", color: "#6b7280" }}>Generated by OtoQuote AI</div>
+        <div style={{ fontSize: "9pt", fontWeight: 700, fontStyle: "italic", color: primaryColor, marginTop: "4px" }}>
+          Thank You For Your Business!
+        </div>
+      </div>
     </div>
   );
 };

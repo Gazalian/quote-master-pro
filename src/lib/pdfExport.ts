@@ -2,58 +2,65 @@ import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { Quote } from '@/types/quote';
 
+const A4_PX_WIDTH = 794; // 210mm at 96 dpi — standard A4 width
+
 /**
- * Export a quote/invoice to PDF
- * @param elementId - The ID of the HTML element to convert to PDF
- * @param quote - The quote object for filename generation
- * @returns Promise<void>
+ * Render an element at full A4 width regardless of the current viewport,
+ * capture it with html2canvas, and download as a multi-page PDF.
  */
 export const exportToPDF = async (elementId: string, quote: Quote): Promise<void> => {
-  try {
-    const element = document.getElementById(elementId);
+  const element = document.getElementById(elementId);
+  if (!element) throw new Error('Element not found for PDF export');
 
-    if (!element) {
-      throw new Error('Element not found for PDF export');
+  // Create a wrapper that forces A4 width so the PDF is never narrow/mobile-squashed
+  const wrapper = document.createElement('div');
+  wrapper.style.cssText = [
+    'position:absolute',
+    'left:-9999px',
+    'top:0',
+    `width:${A4_PX_WIDTH}px`,
+    `min-width:${A4_PX_WIDTH}px`,
+    'background:#ffffff',
+    'padding:0',
+    'margin:0',
+  ].join(';');
+
+  const clone = element.cloneNode(true) as HTMLElement;
+  // Remove any overflow-x restrictions that are for mobile display only
+  clone.style.cssText = 'width:100%;min-width:0;overflow:visible;';
+  // Walk all descendants and remove overflow-x:auto / scroll so tables render fully
+  clone.querySelectorAll<HTMLElement>('*').forEach((el) => {
+    const cs = getComputedStyle(el);
+    if (cs.overflowX === 'auto' || cs.overflowX === 'scroll') {
+      el.style.overflowX = 'visible';
     }
+  });
 
-    // Create a clone to avoid modifying the original
-    const clone = element.cloneNode(true) as HTMLElement;
-    clone.style.position = 'absolute';
-    clone.style.left = '-9999px';
-    clone.style.top = '0';
-    document.body.appendChild(clone);
+  wrapper.appendChild(clone);
+  document.body.appendChild(wrapper);
 
-    // Capture the element as canvas with high quality
-    const canvas = await html2canvas(clone, {
-      scale: 2, // Higher quality
-      useCORS: true, // Allow cross-origin images
+  try {
+    const canvas = await html2canvas(wrapper, {
+      scale: 2,               // Retina-quality
+      useCORS: true,
       logging: false,
       backgroundColor: '#ffffff',
-      windowWidth: element.scrollWidth,
-      windowHeight: element.scrollHeight,
+      windowWidth: A4_PX_WIDTH,
+      width: A4_PX_WIDTH,
     });
 
-    // Remove the clone
-    document.body.removeChild(clone);
-
-    // Convert canvas to image
     const imgData = canvas.toDataURL('image/png');
-
-    // Calculate PDF dimensions (A4 size)
-    const imgWidth = 210; // A4 width in mm
-    const pageHeight = 297; // A4 height in mm
+    const imgWidth = 210;           // A4 mm
+    const pageHeight = 297;         // A4 mm
     const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-    // Create PDF
     const pdf = new jsPDF('p', 'mm', 'a4');
     let heightLeft = imgHeight;
     let position = 0;
 
-    // Add first page
     pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
     heightLeft -= pageHeight;
 
-    // Add additional pages if needed
     while (heightLeft > 0) {
       position = heightLeft - imgHeight;
       pdf.addPage();
@@ -61,39 +68,48 @@ export const exportToPDF = async (elementId: string, quote: Quote): Promise<void
       heightLeft -= pageHeight;
     }
 
-    // Generate filename
     const docType = quote.status === 'INVOICED' ? 'Invoice' : 'Quotation';
-    const clientName = quote.client.replace(/[^a-z0-9]/gi, '_');
+    const clientName = (quote.client || 'Client').replace(/[^a-z0-9]/gi, '_');
     const date = new Date().toISOString().split('T')[0];
-    const filename = `${docType}_${clientName}_${date}.pdf`;
-
-    // Download the PDF
-    pdf.save(filename);
-  } catch (error) {
-    console.error('Error generating PDF:', error);
-    throw new Error('Failed to generate PDF. Please try again.');
+    pdf.save(`${docType}_${clientName}_${date}.pdf`);
+  } finally {
+    document.body.removeChild(wrapper);
   }
 };
 
 /**
- * Export element to PDF with custom filename
+ * Export any element to PDF with a custom filename.
  */
 export const exportElementToPDF = async (
   elementId: string,
   filename: string
 ): Promise<void> => {
-  try {
-    const element = document.getElementById(elementId);
+  const element = document.getElementById(elementId);
+  if (!element) throw new Error('Element not found for PDF export');
 
-    if (!element) {
-      throw new Error('Element not found for PDF export');
+  const wrapper = document.createElement('div');
+  wrapper.style.cssText = `position:absolute;left:-9999px;top:0;width:${A4_PX_WIDTH}px;min-width:${A4_PX_WIDTH}px;background:#ffffff;`;
+
+  const clone = element.cloneNode(true) as HTMLElement;
+  clone.style.cssText = 'width:100%;min-width:0;overflow:visible;';
+  clone.querySelectorAll<HTMLElement>('*').forEach((el) => {
+    const cs = getComputedStyle(el);
+    if (cs.overflowX === 'auto' || cs.overflowX === 'scroll') {
+      el.style.overflowX = 'visible';
     }
+  });
 
-    const canvas = await html2canvas(element, {
+  wrapper.appendChild(clone);
+  document.body.appendChild(wrapper);
+
+  try {
+    const canvas = await html2canvas(wrapper, {
       scale: 2,
       useCORS: true,
       logging: false,
       backgroundColor: '#ffffff',
+      windowWidth: A4_PX_WIDTH,
+      width: A4_PX_WIDTH,
     });
 
     const imgData = canvas.toDataURL('image/png');
@@ -116,8 +132,7 @@ export const exportElementToPDF = async (
     }
 
     pdf.save(filename);
-  } catch (error) {
-    console.error('Error generating PDF:', error);
-    throw new Error('Failed to generate PDF. Please try again.');
+  } finally {
+    document.body.removeChild(wrapper);
   }
 };

@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
-import { Quote, ChatSession, Invoice, PriceLogEntry } from '@/types/quote';
+import { Quote, ChatSession, Invoice } from '@/types/quote';
+import { recordPriceObservation } from './regionalPriceAPI';
 
 export const quoteAPI = {
   /**
@@ -307,8 +308,20 @@ export const priceLogAPI = {
       .single();
 
     if (error) {
-       console.error("Error creating price entry:", error);
-       throw error;
+      console.error("Error creating price entry:", error);
+      throw error;
+    }
+
+    // Fire-and-forget: capture observation for Regional Consensus Engine
+    if (data.origin_state) {
+      recordPriceObservation({
+        userId,
+        materialName: entry.name,
+        priceNgn:     entry.unitPrice,
+        unit:         entry.unit,
+        state:        data.origin_state,
+        sourceType:   'price_log',
+      });
     }
 
     return {
@@ -340,10 +353,22 @@ export const priceLogAPI = {
       .single();
 
     if (error) {
-       if (error.code === '23505') {
-          throw new Error(`An item named "${entry.name}" already exists in your log.`);
-       }
-       throw error;
+      if (error.code === '23505') {
+        throw new Error(`An item named "${entry.name}" already exists in your log.`);
+      }
+      throw error;
+    }
+
+    // Fire-and-forget: capture observation for Regional Consensus Engine
+    if (data.origin_state && data.user_id) {
+      recordPriceObservation({
+        userId:       data.user_id,
+        materialName: entry.name,
+        priceNgn:     entry.unitPrice,
+        unit:         entry.unit,
+        state:        data.origin_state,
+        sourceType:   'price_log',
+      });
     }
 
     return {

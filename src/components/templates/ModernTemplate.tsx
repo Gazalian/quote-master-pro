@@ -6,192 +6,325 @@ export const formatNGN = (amount: number) =>
 
 export const ModernTemplate = ({ quote, brand }: { quote: Quote; brand: BrandSettings }) => {
   const primaryColor = brand.docPrimary ? `hsl(${brand.docPrimary})` : "#1e40af";
-  const secondaryColor = brand.docSecondary ? `hsl(${brand.docSecondary})` : "#475569";
 
-  // Calculate validity date (30 days from quote date)
   const validUntil = new Date(quote.created_at || Date.now());
   validUntil.setDate(validUntil.getDate() + 30);
-  const validUntilStr = validUntil.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  const validUntilStr = validUntil.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+
+  const docLabel = quote.status === "INVOICED" ? "INVOICE" : "QUOTE";
 
   return (
     <div
-      className="bg-white font-sans text-gray-900 mx-auto p-8"
+      className="bg-white font-sans text-gray-900"
       style={{
-        fontSize: '10pt',
-        lineHeight: '1.4',
         fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
-        maxWidth: '210mm'
+        fontSize: "10pt",
+        lineHeight: "1.4",
+        width: "100%",
+        maxWidth: "794px",
+        margin: "0 auto",
+        padding: "24px 20px",
+        boxSizing: "border-box",
       }}
     >
-      {/* ============ HEADER SECTION ============ */}
-      <div className="border-b-4 pb-4 mb-6" style={{ borderColor: primaryColor }}>
-        <div className="flex justify-between items-start gap-6">
-
-          {/* LEFT: Company Info */}
-          <div className="flex-1">
-            <div className="flex items-start gap-3">
-              {/* Logo */}
+      {/* ── HEADER ── */}
+      <div
+        style={{
+          borderBottom: `4px solid ${primaryColor}`,
+          paddingBottom: "16px",
+          marginBottom: "20px",
+        }}
+      >
+        {/* Top row: company info + doc label — stacks on narrow screens */}
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "16px",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+          }}
+        >
+          {/* Company Info */}
+          <div style={{ flex: "1 1 200px" }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
               {brand.logoUrl && (
                 <div
-                  className="flex-shrink-0 bg-gray-100 rounded p-2 border"
                   style={{
-                    width: '60px',
-                    height: '60px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    borderColor: primaryColor
+                    flexShrink: 0,
+                    width: "56px",
+                    height: "56px",
+                    borderRadius: "6px",
+                    border: `2px solid ${primaryColor}`,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    overflow: "hidden",
+                    backgroundColor: "#f9fafb",
                   }}
                 >
                   <img
                     src={brand.logoUrl}
                     alt="Logo"
-                    style={{
-                      maxWidth: '100%',
-                      maxHeight: '100%',
-                      objectFit: 'contain'
-                    }}
+                    style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
                   />
                 </div>
               )}
-
-              {/* Company Details */}
               <div>
-                <h1
-                  className="text-xl font-bold mb-1"
-                  style={{ color: primaryColor, lineHeight: '1.2' }}
+                <div
+                  style={{
+                    fontSize: "16pt",
+                    fontWeight: 700,
+                    color: primaryColor,
+                    lineHeight: 1.2,
+                    marginBottom: "4px",
+                  }}
                 >
                   {brand.companyName || "Company Name"}
-                </h1>
+                </div>
                 {brand.tagline && (
-                  <p className="text-xs text-gray-600 italic mb-2">{brand.tagline}</p>
-                )}
-                <div className="text-xs text-gray-700 space-y-0.5">
-                  {brand.address && <p>{brand.address}</p>}
-                  <div className="flex gap-3 flex-wrap">
-                    {brand.phone && <p>Phone: {brand.phone}</p>}
-                    {brand.whatsapp && <p>WhatsApp: {brand.whatsapp}</p>}
+                  <div style={{ fontSize: "8pt", color: "#6b7280", fontStyle: "italic", marginBottom: "6px" }}>
+                    {brand.tagline}
                   </div>
-                  {brand.email && <p>Email: {brand.email}</p>}
-                  {brand.rcNumber && <p className="font-semibold mt-1">CAC Reg. No: {brand.rcNumber}</p>}
+                )}
+                <div style={{ fontSize: "8pt", color: "#374151", lineHeight: 1.6 }}>
+                  {brand.address && <div>{brand.address}</div>}
+                  {brand.phone && <div>Phone: {brand.phone}</div>}
+                  {brand.whatsapp && brand.whatsapp !== brand.phone && (
+                    <div>WhatsApp: {brand.whatsapp}</div>
+                  )}
+                  {brand.email && <div>Email: {brand.email}</div>}
+                  {brand.rcNumber && (
+                    <div style={{ fontWeight: 600, marginTop: "2px" }}>CAC Reg: {brand.rcNumber}</div>
+                  )}
                 </div>
               </div>
             </div>
           </div>
 
-          {/* RIGHT: Quote Metadata */}
-          <div className="text-right min-w-[180px]">
+          {/* Doc label + meta */}
+          <div style={{ flex: "0 1 auto", textAlign: "right", minWidth: "150px" }}>
             <div
-              className="inline-block px-6 py-2 mb-3 rounded"
-              style={{ backgroundColor: primaryColor }}
+              style={{
+                display: "inline-block",
+                backgroundColor: primaryColor,
+                color: "#fff",
+                fontWeight: 700,
+                fontSize: "18pt",
+                letterSpacing: "2px",
+                padding: "4px 20px",
+                borderRadius: "4px",
+                marginBottom: "10px",
+              }}
             >
-              <h2 className="text-white text-2xl font-bold tracking-wide">
-                {quote.status === "INVOICED" ? "INVOICE" : "QUOTE"}
-              </h2>
+              {docLabel}
             </div>
-
-            <table className="text-xs ml-auto border-collapse">
+            <table style={{ fontSize: "8pt", borderCollapse: "collapse", marginLeft: "auto" }}>
               <tbody>
-                <tr>
-                  <td className="text-right pr-2 py-1 font-semibold text-gray-700 whitespace-nowrap">DATE:</td>
-                  <td className="border border-gray-300 px-2 py-1 bg-gray-50 min-w-[100px]">{quote.date}</td>
-                </tr>
-                <tr>
-                  <td className="text-right pr-2 py-1 font-semibold text-gray-700 whitespace-nowrap">QUOTE #:</td>
-                  <td className="border border-gray-300 px-2 py-1 bg-gray-50 font-mono">{quote.ref}</td>
-                </tr>
-                <tr>
-                  <td className="text-right pr-2 py-1 font-semibold text-gray-700 whitespace-nowrap">VALID UNTIL:</td>
-                  <td className="border border-gray-300 px-2 py-1 bg-gray-50">{validUntilStr}</td>
-                </tr>
+                {[
+                  ["DATE", quote.date],
+                  [docLabel === "INVOICE" ? "INVOICE #" : "QUOTE #", quote.ref],
+                  ["VALID UNTIL", validUntilStr],
+                ].map(([label, value]) => (
+                  <tr key={label}>
+                    <td
+                      style={{
+                        textAlign: "right",
+                        paddingRight: "8px",
+                        paddingTop: "3px",
+                        paddingBottom: "3px",
+                        fontWeight: 600,
+                        color: "#374151",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {label}:
+                    </td>
+                    <td
+                      style={{
+                        border: "1px solid #d1d5db",
+                        padding: "3px 8px",
+                        backgroundColor: "#f9fafb",
+                        minWidth: "90px",
+                        fontFamily: "monospace",
+                      }}
+                    >
+                      {value}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
         </div>
       </div>
 
-      {/* ============ CUSTOMER SECTION ============ */}
-      <div className="mb-6">
+      {/* ── CUSTOMER ── */}
+      <div style={{ marginBottom: "20px" }}>
         <div
-          className="text-white text-xs font-bold uppercase px-3 py-1.5 mb-2"
-          style={{ backgroundColor: primaryColor }}
+          style={{
+            backgroundColor: primaryColor,
+            color: "#fff",
+            fontSize: "8pt",
+            fontWeight: 700,
+            textTransform: "uppercase",
+            padding: "5px 10px",
+            marginBottom: "8px",
+          }}
         >
           CUSTOMER
         </div>
-        <div className="text-xs text-gray-800 px-3">
-          <p className="font-bold text-sm mb-1">{quote.client}</p>
-          <p className="text-gray-600">{quote.description}</p>
+        <div style={{ fontSize: "9pt", color: "#1f2937", paddingLeft: "10px" }}>
+          <div style={{ fontWeight: 700, fontSize: "11pt", marginBottom: "2px" }}>{quote.client}</div>
+          <div style={{ color: "#6b7280" }}>{quote.description}</div>
         </div>
       </div>
 
-      {/* ============ ITEMS TABLE ============ */}
-      <div className="mb-6">
-        <table className="w-full border-collapse text-xs">
+      {/* ── ITEMS TABLE ── scrollable wrapper for narrow screens */}
+      <div style={{ overflowX: "auto", marginBottom: "0" }}>
+        <table
+          style={{
+            width: "100%",
+            minWidth: "480px",
+            borderCollapse: "collapse",
+            fontSize: "9pt",
+          }}
+        >
           <thead>
             <tr style={{ backgroundColor: primaryColor }}>
-              <th className="text-left text-white font-bold uppercase px-3 py-2 border border-gray-300">
-                DESCRIPTION
-              </th>
-              <th className="text-right text-white font-bold uppercase px-3 py-2 border border-gray-300 w-[100px]">
-                UNIT PRICE
-              </th>
-              <th className="text-center text-white font-bold uppercase px-3 py-2 border border-gray-300 w-[60px]">
-                QTY
-              </th>
-              <th className="text-right text-white font-bold uppercase px-3 py-2 border border-gray-300 w-[100px]">
-                AMOUNT
-              </th>
+              {[
+                { label: "DESCRIPTION", align: "left", width: "auto" },
+                { label: "UNIT PRICE", align: "right", width: "110px" },
+                { label: "QTY", align: "center", width: "50px" },
+                { label: "AMOUNT", align: "right", width: "110px" },
+              ].map(({ label, align, width }) => (
+                <th
+                  key={label}
+                  style={{
+                    textAlign: align as any,
+                    color: "#fff",
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    padding: "8px 10px",
+                    border: "1px solid #d1d5db",
+                    width,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {label}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
-            {quote.groups.map((group, groupIndex) => {
-              let itemCounter = 0;
+            {quote.groups.map((group, gi) => {
+              let rowIdx = 0;
               return (
-                <React.Fragment key={groupIndex}>
-                  {/* Category Header Row */}
-                  <tr style={{ backgroundColor: '#f3f4f6' }}>
+                <React.Fragment key={gi}>
+                  {/* Category row */}
+                  <tr style={{ backgroundColor: "#f3f4f6" }}>
                     <td
                       colSpan={4}
-                      className="font-bold px-3 py-1.5 border border-gray-300"
-                      style={{ color: primaryColor }}
+                      style={{
+                        fontWeight: 700,
+                        padding: "6px 10px",
+                        border: "1px solid #d1d5db",
+                        color: primaryColor,
+                        fontSize: "9pt",
+                      }}
                     >
                       {group.name.toUpperCase()}
                     </td>
                   </tr>
 
-                  {/* Items */}
-                  {group.items.map((item, itemIndex) => {
-                    const rowClass = itemCounter % 2 === 0 ? 'bg-white' : 'bg-gray-50';
-                    itemCounter++;
+                  {/* Item rows */}
+                  {group.items.map((item, ii) => {
+                    const bg = rowIdx++ % 2 === 0 ? "#fff" : "#f9fafb";
                     return (
-                      <tr key={itemIndex} className={rowClass}>
-                        <td className="px-3 py-2 border border-gray-300">
-                          <div className="font-medium">{item.name}</div>
-                          <div className="text-[9pt] text-gray-600 mt-0.5">
+                      <tr key={ii} style={{ backgroundColor: bg }}>
+                        <td style={{ padding: "7px 10px", border: "1px solid #e5e7eb" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                            <span style={{ fontWeight: 500 }}>{item.name}</span>
+                            {item.source && (
+                              <span style={{
+                                fontSize: "6.5pt", fontWeight: 700, padding: "1px 5px",
+                                borderRadius: "999px", whiteSpace: "nowrap",
+                                backgroundColor: item.source === "my_price" ? "rgba(16,185,129,0.15)" : item.source === "regional_price" ? "rgba(245,130,32,0.15)" : "rgba(156,163,175,0.25)",
+                                color: item.source === "my_price" ? "#065f46" : item.source === "regional_price" ? "#9a4a00" : "#6b7280",
+                              }}>
+                                {item.source === "my_price" ? "MY PRICE" : item.source === "regional_price" ? `REGIONAL${item.regionName ? ` · ${item.regionName}` : ""}` : "AI EST."}
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: "8pt", color: "#6b7280", marginTop: "2px" }}>
                             {item.qty} {item.unit} × {formatNGN(item.unitPrice)}
                           </div>
                         </td>
-                        <td className="text-right px-3 py-2 border border-gray-300 tabular-nums">
+                        <td
+                          style={{
+                            textAlign: "right",
+                            padding: "7px 10px",
+                            border: "1px solid #e5e7eb",
+                            fontVariantNumeric: "tabular-nums",
+                          }}
+                        >
                           {formatNGN(item.unitPrice)}
                         </td>
-                        <td className="text-center px-3 py-2 border border-gray-300 tabular-nums">
+                        <td
+                          style={{
+                            textAlign: "center",
+                            padding: "7px 10px",
+                            border: "1px solid #e5e7eb",
+                            fontVariantNumeric: "tabular-nums",
+                          }}
+                        >
                           {item.qty}
                         </td>
-                        <td className="text-right px-3 py-2 border border-gray-300 font-semibold tabular-nums">
+                        <td
+                          style={{
+                            textAlign: "right",
+                            padding: "7px 10px",
+                            border: "1px solid #e5e7eb",
+                            fontWeight: 600,
+                            fontVariantNumeric: "tabular-nums",
+                          }}
+                        >
                           {formatNGN(item.total)}
                         </td>
                       </tr>
                     );
                   })}
 
-                  {/* Group Subtotal */}
+                  {/* Group subtotal */}
                   {quote.groups.length > 1 && (
                     <tr>
-                      <td colSpan={3} className="text-right px-3 py-1.5 border border-gray-300 font-semibold bg-gray-100">
+                      <td
+                        colSpan={3}
+                        style={{
+                          textAlign: "right",
+                          padding: "5px 10px",
+                          border: "1px solid #e5e7eb",
+                          fontWeight: 600,
+                          backgroundColor: "#f3f4f6",
+                        }}
+                      >
                         {group.name} Subtotal:
                       </td>
-                      <td className="text-right px-3 py-1.5 border border-gray-300 font-bold bg-gray-100 tabular-nums">
-                        {formatNGN(group.items.reduce((sum, item) => sum + item.total, 0))}
+                      <td
+                        style={{
+                          textAlign: "right",
+                          padding: "5px 10px",
+                          border: "1px solid #e5e7eb",
+                          fontWeight: 700,
+                          backgroundColor: "#f3f4f6",
+                          fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
+                        {formatNGN(group.items.reduce((s, i) => s + i.total, 0))}
                       </td>
                     </tr>
                   )}
@@ -199,107 +332,203 @@ export const ModernTemplate = ({ quote, brand }: { quote: Quote; brand: BrandSet
               );
             })}
 
-            {/* Empty rows for visual balance (minimum 3 rows) */}
-            {Array.from({ length: Math.max(0, 3 - quote.groups.reduce((sum, g) => sum + g.items.length, 0)) }).map((_, i) => (
-              <tr key={`empty-${i}`} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                <td className="px-3 py-2 border border-gray-300 text-transparent">-</td>
-                <td className="px-3 py-2 border border-gray-300">&nbsp;</td>
-                <td className="px-3 py-2 border border-gray-300">&nbsp;</td>
-                <td className="px-3 py-2 border border-gray-300">&nbsp;</td>
+            {/* Padding rows */}
+            {Array.from({
+              length: Math.max(0, 3 - quote.groups.reduce((s, g) => s + g.items.length, 0)),
+            }).map((_, i) => (
+              <tr key={`pad-${i}`} style={{ backgroundColor: i % 2 === 0 ? "#fff" : "#f9fafb" }}>
+                <td style={{ padding: "7px 10px", border: "1px solid #e5e7eb" }}>&nbsp;</td>
+                <td style={{ border: "1px solid #e5e7eb" }}>&nbsp;</td>
+                <td style={{ border: "1px solid #e5e7eb" }}>&nbsp;</td>
+                <td style={{ border: "1px solid #e5e7eb" }}>&nbsp;</td>
               </tr>
             ))}
           </tbody>
         </table>
-
-        {/* ============ SUMMARY SECTION ============ */}
-        <div className="flex justify-end mt-0">
-          <div className="w-[300px]">
-            <table className="w-full text-xs border-collapse">
-              <tbody>
-                <tr>
-                  <td className="text-right px-3 py-2 border border-gray-300 bg-gray-50 font-semibold">
-                    Subtotal:
-                  </td>
-                  <td className="text-right px-3 py-2 border border-gray-300 bg-gray-50 font-bold tabular-nums">
-                    ₦
-                  </td>
-                  <td className="text-right px-3 py-2 border border-gray-300 bg-gray-50 font-bold tabular-nums w-[120px]">
-                    {formatNGN(quote.grandTotal).replace('₦', '')}
-                  </td>
-                </tr>
-
-                <tr style={{ backgroundColor: primaryColor }}>
-                  <td className="text-right px-3 py-3 border border-gray-300 text-white font-bold uppercase text-sm">
-                    TOTAL:
-                  </td>
-                  <td className="text-right px-3 py-3 border border-gray-300 text-white font-bold text-lg tabular-nums">
-                    ₦
-                  </td>
-                  <td className="text-right px-3 py-3 border border-gray-300 text-white font-bold text-lg tabular-nums">
-                    {formatNGN(quote.grandTotal).replace('₦', '')}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
       </div>
 
-      {/* ============ PAYMENT DETAILS (Invoice Only) ============ */}
+      {/* ── TOTALS ── */}
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "20px" }}>
+        <table
+          style={{
+            borderCollapse: "collapse",
+            fontSize: "9pt",
+            minWidth: "260px",
+            width: "100%",
+            maxWidth: "320px",
+          }}
+        >
+          <tbody>
+            <tr>
+              <td
+                style={{
+                  textAlign: "right",
+                  padding: "6px 10px",
+                  border: "1px solid #d1d5db",
+                  backgroundColor: "#f9fafb",
+                  fontWeight: 600,
+                }}
+              >
+                Subtotal:
+              </td>
+              <td
+                style={{
+                  textAlign: "right",
+                  padding: "6px 10px",
+                  border: "1px solid #d1d5db",
+                  backgroundColor: "#f9fafb",
+                  fontWeight: 700,
+                  fontVariantNumeric: "tabular-nums",
+                }}
+              >
+                {formatNGN(quote.grandTotal)}
+              </td>
+            </tr>
+            <tr style={{ backgroundColor: primaryColor }}>
+              <td
+                style={{
+                  textAlign: "right",
+                  padding: "8px 10px",
+                  border: "1px solid #d1d5db",
+                  color: "#fff",
+                  fontWeight: 700,
+                  fontSize: "11pt",
+                  textTransform: "uppercase",
+                }}
+              >
+                TOTAL:
+              </td>
+              <td
+                style={{
+                  textAlign: "right",
+                  padding: "8px 10px",
+                  border: "1px solid #d1d5db",
+                  color: "#fff",
+                  fontWeight: 700,
+                  fontSize: "13pt",
+                  fontVariantNumeric: "tabular-nums",
+                }}
+              >
+                {formatNGN(quote.grandTotal)}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      {/* ── PAYMENT (Invoice only) ── */}
       {quote.status === "INVOICED" && brand.bankDetails && (
-        <div className="mb-6 bg-blue-50 border border-blue-200 rounded p-3">
-          <h3 className="text-xs font-bold mb-2 uppercase" style={{ color: primaryColor }}>
+        <div
+          style={{
+            marginBottom: "20px",
+            backgroundColor: "#eff6ff",
+            border: "1px solid #bfdbfe",
+            borderRadius: "6px",
+            padding: "12px",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "8pt",
+              fontWeight: 700,
+              textTransform: "uppercase",
+              color: primaryColor,
+              marginBottom: "8px",
+            }}
+          >
             Payment Information
-          </h3>
-          <div className="text-xs space-y-1">
-            <p><span className="font-semibold">Bank Name:</span> {brand.bankDetails.bankName}</p>
-            <p><span className="font-semibold">Account Name:</span> {brand.bankDetails.accountName}</p>
-            <p><span className="font-semibold">Account Number:</span> {brand.bankDetails.accountNumber}</p>
+          </div>
+          <div style={{ fontSize: "8pt", lineHeight: 1.8 }}>
+            <div>
+              <strong>Bank Name:</strong> {brand.bankDetails.bankName}
+            </div>
+            <div>
+              <strong>Account Name:</strong> {brand.bankDetails.accountName}
+            </div>
+            <div>
+              <strong>Account Number:</strong> {brand.bankDetails.accountNumber}
+            </div>
             {brand.bankDetails.paymentTerms && (
-              <p className="mt-2"><span className="font-semibold">Payment Terms:</span> {brand.bankDetails.paymentTerms}</p>
+              <div style={{ marginTop: "6px" }}>
+                <strong>Payment Terms:</strong> {brand.bankDetails.paymentTerms}
+              </div>
             )}
           </div>
         </div>
       )}
 
-      {/* ============ TERMS AND CONDITIONS ============ */}
-      <div className="mb-6">
+      {/* ── TERMS ── */}
+      <div style={{ marginBottom: "20px" }}>
         <div
-          className="text-white text-xs font-bold uppercase px-3 py-1.5 mb-2"
-          style={{ backgroundColor: primaryColor }}
+          style={{
+            backgroundColor: primaryColor,
+            color: "#fff",
+            fontSize: "8pt",
+            fontWeight: 700,
+            textTransform: "uppercase",
+            padding: "5px 10px",
+            marginBottom: "8px",
+          }}
         >
           TERMS AND CONDITIONS
         </div>
-        <div className="text-[9pt] text-gray-700 px-3 space-y-1">
-          <p>1. This quotation is valid for 30 days from the date of issue.</p>
-          <p>2. Payment terms: {brand.bankDetails?.paymentTerms || "50% deposit required before commencement of work, balance upon completion."}</p>
-          <p>3. Prices are in Nigerian Naira (₦) and exclude VAT unless otherwise stated.</p>
-          <p>4. Any variations to the scope of work may result in additional charges.</p>
-          <p>5. Please sign and return this quotation to indicate acceptance.</p>
+        <div style={{ fontSize: "8pt", color: "#374151", paddingLeft: "10px", lineHeight: 1.8 }}>
+          <div>1. This quotation is valid for 30 days from the date of issue.</div>
+          <div>
+            2. Payment terms:{" "}
+            {brand.bankDetails?.paymentTerms ||
+              "50% deposit required before commencement of work, balance upon completion."}
+          </div>
+          <div>3. Prices are in Nigerian Naira (₦) and exclude VAT unless otherwise stated.</div>
+          <div>4. Any variations to the scope of work may result in additional charges.</div>
+          <div>5. Please sign and return this quotation to indicate acceptance.</div>
         </div>
       </div>
 
-      {/* ============ SIGNATURE SECTION ============ */}
-      <div className="mb-6">
-        <div className="text-xs italic text-gray-700 mb-3 px-3">
-          <p className="font-semibold mb-2">Customer Acceptance (Sign below):</p>
+      {/* ── SIGNATURE ── */}
+      <div style={{ marginBottom: "20px", paddingLeft: "10px" }}>
+        <div style={{ fontSize: "8pt", fontStyle: "italic", color: "#374151", marginBottom: "8px", fontWeight: 600 }}>
+          Customer Acceptance (Sign below):
         </div>
-        <div className="border-t-2 border-gray-400 w-[250px] ml-3 pt-1">
-          <p className="text-[9pt] text-gray-600">Print Name:</p>
+        <div
+          style={{
+            borderTop: "2px solid #9ca3af",
+            width: "240px",
+            paddingTop: "4px",
+          }}
+        >
+          <div style={{ fontSize: "8pt", color: "#6b7280" }}>Print Name:</div>
         </div>
       </div>
 
-      {/* ============ FOOTER ============ */}
-      <div className="text-center border-t pt-4 mt-6" style={{ borderColor: primaryColor }}>
-        <p className="text-xs text-gray-600">
+      {/* ── FOOTER ── */}
+      <div
+        style={{
+          textAlign: "center",
+          borderTop: `2px solid ${primaryColor}`,
+          paddingTop: "12px",
+          marginTop: "12px",
+        }}
+      >
+        <div style={{ fontSize: "8pt", color: "#6b7280" }}>
           If you have any questions about this quotation, please contact
-        </p>
-        <p className="text-xs font-semibold mt-1" style={{ color: primaryColor }}>
-          {brand.contactPerson || brand.companyName} | Phone: {brand.phone || brand.whatsapp} | Email: {brand.email}
-        </p>
-        <p className="text-sm font-semibold mt-3 italic" style={{ color: primaryColor }}>
+        </div>
+        <div style={{ fontSize: "8pt", fontWeight: 600, marginTop: "4px", color: primaryColor }}>
+          {[brand.contactPerson || brand.companyName, brand.phone || brand.whatsapp, brand.email]
+            .filter(Boolean)
+            .join(" | ")}
+        </div>
+        <div
+          style={{
+            fontSize: "11pt",
+            fontWeight: 700,
+            fontStyle: "italic",
+            marginTop: "10px",
+            color: primaryColor,
+          }}
+        >
           Thank You For Your Business!
-        </p>
+        </div>
       </div>
     </div>
   );

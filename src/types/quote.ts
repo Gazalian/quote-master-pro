@@ -1,4 +1,4 @@
-export type PriceSource = "my_price" | "ai_estimate";
+export type PriceSource = "my_price" | "regional_price" | "ai_estimate";
 
 export interface QuoteItem {
   id: string;
@@ -8,6 +8,8 @@ export interface QuoteItem {
   unitPrice: number;
   total: number;
   source: PriceSource;
+  /** Populated when source === "regional_price" — e.g. "Oyo State" */
+  regionName?: string;
 }
 
 export interface QuoteGroup {

@@ -9,6 +9,13 @@ import { ChatMessage, Quote, ChatSession } from "@/types/quote";
 import { useAuth } from "@/lib/AuthContext";
 import { quoteAPI } from "@/lib/api";
 import { generateQuoteWithGemini } from "@/lib/geminiService";
+import {
+  getRegionalPricesForState,
+  recordPriceObservation,
+  type RegionalPriceEntry,
+} from "@/lib/regionalPriceAPI";
+import { getUserPreferences, type UserPreferences } from "@/lib/behaviorEngine";
+import { supabase } from "@/lib/supabase";
 
 const initialMessages: ChatMessage[] = [
   {
@@ -37,6 +44,12 @@ const ChatPage = () => {
   // Image upload state
   const [selectedImages, setSelectedImages] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // User profile: state + trade (for regional price lookup)
+  const [userState, setUserState]   = useState<string>("");
+  const [userTrade, setUserTrade]   = useState<string>("general");
+  const [regionalPrices, setRegionalPrices] = useState<RegionalPriceEntry[]>([]);
+  const [userPreferences, setUserPreferences] = useState<UserPreferences | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const isDesktop = useIsDesktop();
@@ -80,6 +93,26 @@ const ChatPage = () => {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages]);
+
+  // Fetch user profile → state + trade, then load regional prices + learned preferences
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from('profiles')
+      .select('state_operation, trade_type')
+      .eq('id', user.id)
+      .single()
+      .then(({ data }) => {
+        if (!data) return;
+        const state = data.state_operation || '';
+        const trade = data.trade_type || 'general';
+        setUserState(state);
+        setUserTrade(trade);
+        if (state) getRegionalPricesForState(state).then(setRegionalPrices);
+      });
+    // Fetch learned behavior preferences (fire-and-forget)
+    getUserPreferences(user.id).then(setUserPreferences);
+  }, [user]);
 
   const generateMockQuote = async (prompt: string): Promise<Quote> => {
     if (!user) throw new Error("Must be logged in to create a quote");
@@ -188,8 +221,11 @@ const ChatPage = () => {
               role: m.role === "user" ? "user" : "model",
               content: m.content
             })),
-          userLocation: "Lagos", // Could be from user profile in future
-          priceLogEntries, // Pass user's saved prices
+          userLocation: userState,
+          userTrade,
+          priceLogEntries,
+          regionalPrices,
+          userPreferences,
         },
         user.id
       );
@@ -258,9 +294,17 @@ const ChatPage = () => {
     }
   };
 
+  const fileToBase64 = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+    });
+
   const handleSend = async () => {
     if (!input.trim() || isGenerating) return;
-    
+
     if (!currentSessionId) {
       setCurrentSessionId(Date.now().toString());
     }
@@ -268,6 +312,9 @@ const ChatPage = () => {
     const prompt = input;
     const imagesToSend = [...selectedImages]; // Keep reference to images
     setInput("");
+
+    // Convert images to base64 so they persist in localStorage sessions
+    const imageBase64s = await Promise.all(imagesToSend.map(fileToBase64));
 
     // Add user message with images if any
     const userMessage: ChatMessage = {
@@ -280,13 +327,13 @@ const ChatPage = () => {
     setMessages((prev) => [
       ...prev,
       userMessage,
-      // Add image messages
-      ...imagesToSend.map((img, idx) => ({
+      // Add image messages using base64 URLs (persistent across reloads)
+      ...imageBase64s.map((dataUrl, idx) => ({
         id: Date.now().toString() + `-img-${idx}`,
         role: "user" as const,
         content: "",
         type: "image" as const,
-        imageUrl: URL.createObjectURL(img)
+        imageUrl: dataUrl
       }))
     ]);
 
@@ -337,19 +384,18 @@ const ChatPage = () => {
       });
       toast.success("Quote generated!");
     } catch (error: any) {
-      console.error("Quote generation error:", error);
+      // Clarifying questions are a normal AI flow — not an error
+      if (error.message === "CLARIFYING_QUESTIONS_NEEDED") return;
 
-      // Don't show error toast for clarifying questions
-      if (error.message !== "CLARIFYING_QUESTIONS_NEEDED") {
-        toast.error(error.message || "Failed to generate quote");
-        setMessages((prev) => {
-          const next = prev.filter(m => !m.id.endsWith("-ai-loading"));
-          return [
-            ...next,
-            { id: Date.now().toString() + "-ai-error", role: "ai", content: `Sorry, I ran into an error: ${error.message}. Please try again.`, type: "text" }
-          ];
-        });
-      }
+      console.error("Quote generation error:", error);
+      toast.error(error.message || "Failed to generate quote");
+      setMessages((prev) => {
+        const next = prev.filter(m => !m.id.endsWith("-ai-loading"));
+        return [
+          ...next,
+          { id: Date.now().toString() + "-ai-error", role: "ai", content: `Sorry, I ran into an error: ${error.message}. Please try again.`, type: "text" }
+        ];
+      });
     } finally {
       setIsGenerating(false);
     }
@@ -382,6 +428,25 @@ const ChatPage = () => {
       const generated = await generateQuoteWithAI(newPrompt);
       setActiveQuote(generated);
       setQuoteHistory(prev => [...prev, generated]); // Add to history
+
+      // If the updated quote contains regional_price items, record observations
+      const allItems = generated.groups.flatMap(g => g.items);
+      const regionalItems = allItems.filter(item => item.source === 'regional_price');
+      for (const item of regionalItems) {
+        if (user && userState) {
+          recordPriceObservation({
+            userId: user.id,
+            materialName: item.name,
+            priceNgn: item.unitPrice,
+            unit: item.unit,
+            state: userState,
+            sourceType: 'quote_override',
+          });
+        }
+      }
+      if (regionalItems.length > 0) {
+        toast.info(`Price updated. Your input helps keep ${userState} estimates accurate for all tradespeople.`);
+      }
 
       setMessages((prev) => {
         const next = prev.filter(m => !m.id.endsWith("-ai-loading"));
@@ -638,7 +703,7 @@ const ChatPage = () => {
                 </button>
               ) : (
                 <button 
-                  onClick={() => toast.info("Voice recording (mock): Starts listening...")}
+                  onClick={() => toast.info("Voice input coming soon!", { description: "Please type your message for now." })}
                   className="w-10 h-10 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-200/50 rounded-full transition-colors disabled:opacity-50"
                   disabled={isGenerating}
                   title="Voice message"
