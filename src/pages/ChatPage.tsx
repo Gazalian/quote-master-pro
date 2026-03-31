@@ -647,7 +647,12 @@ const ChatPage = () => {
       </div>
 
       {/* ── Input bar ───────────────────────────────────────────── */}
-      <div className="px-3 py-3 bg-white border-t border-gray-100 shrink-0">
+      {/* paddingBottom extends the white background into the iOS home-indicator
+          safe zone so there is no gray gap between the input and the bottom nav */}
+      <div
+        className="px-3 pt-3 bg-white border-t border-gray-100 shrink-0"
+        style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom, 0px))" }}
+      >
         {/* Image previews */}
         {selectedImages.length > 0 && (
           <div className="flex gap-2 flex-wrap mb-2 px-1">

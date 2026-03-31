@@ -8,8 +8,13 @@ export const AppLayout = () => {
       {/* Desktop sidebar – hidden below lg */}
       <DesktopSidebar />
 
-      {/* Main content area */}
-      <div className="flex flex-col flex-1 min-w-0 min-h-0">
+      {/* Main content area — paddingTop pushes content below the iOS status bar
+          when viewport-fit=cover + black-translucent are active. Returns 0 on
+          Android / desktop so there is no effect on those platforms.          */}
+      <div
+        className="flex flex-col flex-1 min-w-0 min-h-0"
+        style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
+      >
         <div className="flex-1 overflow-hidden">
           <Outlet />
         </div>
