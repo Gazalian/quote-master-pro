@@ -1,20 +1,5 @@
 import { X, MessageSquare, Plus } from "lucide-react";
-
-interface ChatSession {
-  id: string;
-  title: string;
-  client: string;
-  date: string;
-  preview: string;
-}
-
-const mockSessions: ChatSession[] = [
-  { id: "1", title: "Rewiring – 3 Bed Flat", client: "Alhaji Musa Bello", date: "13 Mar 2026", preview: "Quote generated: ₦232,700" },
-  { id: "2", title: "Kitchen Plumbing", client: "Mrs. Adebayo", date: "11 Mar 2026", preview: "Waiting for site photo..." },
-  { id: "3", title: "Generator Wiring", client: "Chief Okonkwo", date: "8 Mar 2026", preview: "Quote approved ✓" },
-  { id: "4", title: "AC Installation", client: "Client X", date: "5 Mar 2026", preview: "Draft – 4 items" },
-  { id: "5", title: "Bathroom Renovation", client: "Dr. Fashola", date: "28 Feb 2026", preview: "Invoice sent" },
-];
+import { ChatSession } from "@/types/quote";
 
 interface Props {
   open?: boolean;
@@ -54,7 +39,11 @@ export const ChatHistoryDrawer = ({ open = true, variant = "drawer", sessions = 
 
       {/* Sessions list */}
       <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1">
-        {(sessions.length > 0 ? sessions : mockSessions).map((session) => (
+        {sessions.length === 0 ? (
+          <p className="text-xs text-muted-foreground text-center py-8 px-4">
+            No chats yet. Start a new conversation to generate your first quote.
+          </p>
+        ) : sessions.map((session) => (
           <button
             key={session.id}
             onClick={() => { onSelectSession?.(session.id); onClose?.(); }}
@@ -66,7 +55,7 @@ export const ChatHistoryDrawer = ({ open = true, variant = "drawer", sessions = 
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">{session.title}</p>
-                <p className="text-xs text-muted-foreground truncate">{session.client}</p>
+                <p className="text-xs text-muted-foreground truncate">{session.client || 'No client'}</p>
               </div>
               <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground shrink-0 mt-1">{session.date}</span>
             </div>

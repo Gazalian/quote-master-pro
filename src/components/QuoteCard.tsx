@@ -143,64 +143,75 @@ export const QuoteCard = ({ quote, onQuoteSaved, mode = "dashboard" }: { quote: 
 
   if (mode === "chat") {
     return (
-      <div className="flex flex-col gap-3">
-        <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden flex flex-col">
-           <div className="p-4 border-b border-border bg-secondary/30">
-             <h3 className="text-base font-semibold text-foreground mb-1">Generated Draft</h3>
-             <p className="text-xs text-muted-foreground line-clamp-2">{currentQuote.description || "No description provided."}</p>
-           </div>
-           
-           <div className="p-4 space-y-5 flex-1 overflow-y-auto max-h-[350px] custom-scrollbar">
-             {currentQuote.groups.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-4">No items added to this quote yet.</p>
-             ) : (
-               currentQuote.groups.map(group => (
-                 <div key={group.id} className="space-y-2.5">
-                   <h4 className="text-xs font-bold text-foreground uppercase tracking-wider text-primary pb-1 border-b border-border/50">{group.name}</h4>
-                   <div className="space-y-2">
-                     {group.items.map(item => (
-                       <div key={item.id} className="flex justify-between items-start gap-3">
-                         <div className="flex-1 min-w-0">
-                           <div className="flex items-center gap-1.5 flex-wrap">
-                             <p className="text-sm font-medium text-foreground leading-tight">{item.name}</p>
-                           </div>
-                           <p className="text-[11px] text-muted-foreground mt-0.5">
-                             {item.qty} {item.unit} × ₦{item.unitPrice.toLocaleString("en-NG")}
-                           </p>
-                         </div>
-                         <span className="text-sm font-semibold whitespace-nowrap mt-0.5">₦{item.total.toLocaleString("en-NG")}</span>
-                       </div>
-                     ))}
-                   </div>
-                 </div>
-               ))
-             )}
-           </div>
-           
-           <div className="p-4 bg-secondary/20 border-t border-border flex justify-between items-center">
-             <span className="text-sm font-medium text-foreground">Grand Total</span>
-             <span className="text-lg font-black text-primary">₦{currentQuote.grandTotal.toLocaleString("en-NG")}</span>
-           </div>
+      <div className="flex flex-col gap-2 w-full">
+        {/* Quote summary card */}
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          {/* Card header — ref + description */}
+          <div className="flex items-start justify-between gap-2 px-4 pt-4 pb-3 border-b border-gray-100">
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold text-primary uppercase tracking-widest mb-0.5">{currentQuote.ref}</p>
+              <p className="text-sm font-semibold text-gray-900 leading-snug line-clamp-2">
+                {currentQuote.description || "Untitled Quote"}
+              </p>
+              {currentQuote.client && currentQuote.client !== 'Client Name' && (
+                <p className="text-xs text-gray-400 mt-0.5">{currentQuote.client}</p>
+              )}
+            </div>
+          </div>
+
+          {/* Line items — no artificial height cap; scrolls with the chat */}
+          <div className="px-4 py-3 space-y-4">
+            {currentQuote.groups.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-2">No items yet.</p>
+            ) : currentQuote.groups.map(group => (
+              <div key={group.id}>
+                <p className="text-[10px] font-bold text-primary uppercase tracking-wider mb-2">
+                  {group.name}
+                </p>
+                <div className="space-y-2">
+                  {group.items.map(item => (
+                    <div key={item.id} className="flex justify-between items-baseline gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[13px] font-medium text-gray-800 leading-tight truncate">{item.name}</p>
+                        <p className="text-[11px] text-gray-400 mt-px">
+                          {item.qty} {item.unit} × ₦{item.unitPrice.toLocaleString("en-NG")}
+                        </p>
+                      </div>
+                      <span className="text-[13px] font-semibold text-gray-900 whitespace-nowrap shrink-0">
+                        ₦{item.total.toLocaleString("en-NG")}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Grand total bar */}
+          <div className="mx-3 mb-3 flex justify-between items-center bg-primary/5 rounded-xl px-4 py-3 border border-primary/10">
+            <span className="text-xs font-bold text-gray-600 uppercase tracking-wide">Grand Total</span>
+            <span className="text-base font-black text-primary">₦{currentQuote.grandTotal.toLocaleString("en-NG")}</span>
+          </div>
         </div>
-        
+
+        {/* Action buttons */}
         <div className="flex gap-2">
           <button
             onClick={() => setEditing(true)}
-            className="flex-1 bg-secondary text-secondary-foreground py-2.5 rounded-lg text-sm font-semibold hover:bg-secondary/80 transition-colors"
+            className="flex-1 bg-gray-100 text-gray-700 py-3 rounded-xl text-sm font-semibold active:bg-gray-200 transition-colors"
           >
-            Edit Quote
+            Edit
           </button>
-          
           {currentQuote.isDraft ? (
             <button
               onClick={handleSaveDraft}
-              className="flex-[2] bg-primary text-primary-foreground py-2.5 rounded-lg text-sm font-semibold hover:opacity-90 flex items-center justify-center transition-colors"
+              className="flex-[2] bg-primary text-white py-3 rounded-xl text-sm font-semibold active:opacity-90 transition-opacity"
             >
               Save to Dashboard
             </button>
           ) : (
-            <div className="flex-[2] bg-badge-approved/20 text-badge-approved-fg py-2.5 rounded-lg text-sm font-bold flex items-center justify-center border border-badge-approved/30">
-              Saved
+            <div className="flex-[2] flex items-center justify-center gap-1.5 py-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm font-bold">
+              ✓ Saved
             </div>
           )}
         </div>

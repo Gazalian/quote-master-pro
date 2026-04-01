@@ -7,7 +7,6 @@ import { ChatHistoryDrawer } from "@/components/ChatHistoryDrawer";
 import { useIsDesktop } from "@/hooks/use-mobile";
 import { ChatMessage, Quote, ChatSession } from "@/types/quote";
 import { useAuth } from "@/lib/AuthContext";
-import { quoteAPI } from "@/lib/api";
 import { generateQuoteWithGemini } from "@/lib/geminiService";
 import {
   getRegionalPricesForState,
@@ -99,53 +98,96 @@ const ChatPage = () => {
   // Unanswered clarifying questions from the previous AI turn (queue logic)
   const [pendingQuestions, setPendingQuestions] = useState<string[]>(_chatCache.pendingQuestions);
 
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const isDesktop = useIsDesktop();
+  const scrollRef   = useRef<HTMLDivElement>(null);
+  const saveTimer   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isDesktop   = useIsDesktop();
 
-  // ── Sync live state back to module-level cache so tab switches don't wipe it ──
+  // ── Sync live state back to module-level cache (tab-switch persistence) ──
   useEffect(() => {
     _chatCache = { messages, activeQuote, quoteHistory, currentSessionId, pendingQuestions };
   }, [messages, activeQuote, quoteHistory, currentSessionId, pendingQuestions]);
 
+  // ── Load session list from Supabase on login ──────────────────────────────
   useEffect(() => {
-    const saved = localStorage.getItem('otoquote_sessions');
-    if (saved) {
-      try { setSessions(JSON.parse(saved)); } catch(e) {}
-    }
-  }, []);
+    if (!user) return;
+    supabase
+      .from('chat_sessions')
+      .select('id, title, client, last_message, created_at, updated_at')
+      .eq('user_id', user.id)
+      .order('updated_at', { ascending: false })
+      .limit(30)
+      .then(({ data }) => {
+        if (!data) return;
+        setSessions(data.map(s => ({
+          id: s.id,
+          user_id: user.id,
+          title: s.title || 'New Session',
+          client: s.client || '',
+          date: new Date(s.updated_at || s.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+          preview: s.last_message || '',
+          created_at: s.created_at,
+          updated_at: s.updated_at,
+        })));
+      });
+  }, [user]);
 
+  // ── Debounced Supabase upsert whenever conversation state changes ─────────
+  // Images are stripped (base64 is too large for DB); text history is kept.
   useEffect(() => {
-    if (currentSessionId && messages.length > 1) { // >1 to not save initial placeholder
-      const sessionData = { messages, activeQuote, quoteHistory };
-      localStorage.setItem(`otoquote_chat_${currentSessionId}`, JSON.stringify(sessionData));
-      
+    if (!currentSessionId || messages.length <= 1 || !user) return;
+
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(async () => {
+      const titleMatch = messages.find(m => m.role === 'user');
+      const title      = titleMatch ? titleMatch.content.substring(0, 50) : 'New Session';
+      const client     = activeQuote?.client || '';
+      const lastText   = [...messages].reverse().find(m => m.type === 'text' && m.role === 'ai');
+      const lastMessage = lastText?.content?.substring(0, 120) || '';
+
+      // Strip base64 image data — keeps message structure intact for context
+      const storableMessages = messages.map(m =>
+        m.type === 'image' ? { ...m, imageUrl: '' } : m
+      );
+
+      const payload = {
+        id: currentSessionId,
+        user_id: user.id,
+        title,
+        client,
+        last_message: lastMessage,
+        messages: storableMessages,
+        active_quote: activeQuote,
+        quote_history: quoteHistory,
+        pending_questions: pendingQuestions,
+      };
+
+      const { error } = await supabase
+        .from('chat_sessions')
+        .upsert(payload, { onConflict: 'id' });
+
+      if (error) console.error('[ChatPage] Session save failed:', error.message);
+
+      // Keep local session list in sync
       setSessions(prev => {
         const next = [...prev];
-        const idx = next.findIndex(s => s.id === currentSessionId);
-        const titleMatch = messages.find(m => m.role === 'user');
-        const title = titleMatch ? titleMatch.content.substring(0, 30) + '...' : "New Session";
-        const client = activeQuote?.client || "No client yet";
-        
-        if (idx === -1) {
-          const now = new Date().toISOString();
-          next.unshift({
-             id: currentSessionId,
-             user_id: user?.id || '',
-             created_at: now,
-             updated_at: now,
-             title,
-             client,
-             date: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
-             preview: `${messages.length} messages`
-          });
-        } else {
-          next[idx] = { ...next[idx], updated_at: new Date().toISOString(), title, client, preview: `${messages.length} messages` };
-        }
-        localStorage.setItem('otoquote_sessions', JSON.stringify(next));
+        const idx  = next.findIndex(s => s.id === currentSessionId);
+        const now  = new Date().toISOString();
+        const entry = {
+          id: currentSessionId,
+          user_id: user.id,
+          title,
+          client,
+          date: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+          preview: lastMessage,
+          created_at: now,
+          updated_at: now,
+        };
+        if (idx === -1) next.unshift(entry);
+        else next[idx] = { ...next[idx], ...entry };
         return next;
       });
-    }
-  }, [messages, activeQuote, quoteHistory, currentSessionId]);
+    }, 1500); // 1.5 s debounce — avoids a write on every streaming chunk
+  }, [messages, activeQuote, quoteHistory, currentSessionId, pendingQuestions]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
@@ -253,7 +295,7 @@ const ChatPage = () => {
     if (!input.trim() || isGenerating) return;
 
     if (!currentSessionId) {
-      setCurrentSessionId(Date.now().toString());
+      setCurrentSessionId(crypto.randomUUID());
     }
 
     const prompt = input;
@@ -438,17 +480,23 @@ const ChatPage = () => {
     }
   };
 
-  const loadSession = (id: string) => {
-    const data = localStorage.getItem(`otoquote_chat_${id}`);
-    if (data) {
-      try {
-        const parsed = JSON.parse(data);
-        setMessages(parsed.messages || initialMessages);
-        setActiveQuote(parsed.activeQuote || null);
-        setQuoteHistory(parsed.quoteHistory || []); // Load quote history
-        setCurrentSessionId(id);
-      } catch(e) { console.error(e); }
+  const loadSession = async (id: string) => {
+    const { data, error } = await supabase
+      .from('chat_sessions')
+      .select('messages, active_quote, quote_history, pending_questions')
+      .eq('id', id)
+      .single();
+
+    if (error || !data) {
+      console.error('[ChatPage] Failed to load session:', error?.message);
+      return;
     }
+
+    setMessages((data.messages as ChatMessage[]) || initialMessages);
+    setActiveQuote((data.active_quote as Quote) || null);
+    setQuoteHistory((data.quote_history as Quote[]) || []);
+    setPendingQuestions((data.pending_questions as string[]) || []);
+    setCurrentSessionId(id);
   };
 
   const startNewChat = () => {

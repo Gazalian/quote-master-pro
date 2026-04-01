@@ -347,9 +347,12 @@ export const QuoteEditor = ({ quote, onClose, onSave }: Props) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-background flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 h-14 bg-primary shrink-0">
+    <div className="fixed inset-0 z-[100] bg-background flex flex-col">
+      {/* Header — padding-top pushes content below the iOS status bar */}
+      <div
+        className="flex items-center justify-between px-4 bg-primary shrink-0"
+        style={{ paddingTop: 'env(safe-area-inset-top, 0px)', minHeight: 'calc(3.5rem + env(safe-area-inset-top, 0px))' }}
+      >
         <button onClick={onClose} className="text-primary-foreground hover:bg-white/10 p-1.5 rounded-full transition-colors">
           <X size={22} />
         </button>
@@ -490,8 +493,11 @@ export const QuoteEditor = ({ quote, onClose, onSave }: Props) => {
         </DndContext>
       </div>
 
-      {/* VAT & Total */}
-      <div className="px-4 py-3 bg-card border-t border-border space-y-2 shrink-0 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+      {/* VAT & Total — padding-bottom covers iPhone home indicator */}
+      <div
+        className="px-4 pt-3 bg-card border-t border-border space-y-2 shrink-0 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]"
+        style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
+      >
         <div className="flex items-center justify-between">
           <label className="text-sm text-foreground font-medium">Add 7.5% VAT</label>
           <button
@@ -515,7 +521,10 @@ export const QuoteEditor = ({ quote, onClose, onSave }: Props) => {
 
       {/* Price Log Prompt */}
       {priceLogPrompt && (
-        <div className="fixed inset-x-0 bottom-0 z-[60] px-4 pb-6 pt-4 bg-card border-t border-border shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.15)] animate-in slide-in-from-bottom-5">
+        <div
+          className="fixed inset-x-0 bottom-0 z-[110] px-4 pt-4 bg-card border-t border-border shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.15)] animate-in slide-in-from-bottom-5"
+          style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}
+        >
           <p className="text-sm text-foreground mb-4">
             Save <span className="font-bold text-primary">{formatNGN(priceLogPrompt.price)}</span> as your price for{" "}
             <span className="font-bold">{priceLogPrompt.itemName}</span> in your Price Log?
