@@ -163,17 +163,6 @@ export const QuoteCard = ({ quote, onQuoteSaved, mode = "dashboard" }: { quote: 
                          <div className="flex-1 min-w-0">
                            <div className="flex items-center gap-1.5 flex-wrap">
                              <p className="text-sm font-medium text-foreground leading-tight">{item.name}</p>
-                             {item.source === 'my_price' && (
-                               <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 border border-green-200 shrink-0">MY PRICE</span>
-                             )}
-                             {item.source === 'regional_price' && (
-                               <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 border border-orange-200 shrink-0">
-                                 REGIONAL{item.regionName ? ` · ${item.regionName}` : ''}
-                               </span>
-                             )}
-                             {item.source === 'ai_estimate' && (
-                               <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 border border-gray-200 shrink-0">AI EST.</span>
-                             )}
                            </div>
                            <p className="text-[11px] text-muted-foreground mt-0.5">
                              {item.qty} {item.unit} × ₦{item.unitPrice.toLocaleString("en-NG")}

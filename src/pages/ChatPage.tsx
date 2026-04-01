@@ -328,8 +328,8 @@ const ChatPage = () => {
           id: Date.now().toString() + "-ai-response",
           role: "ai",
           content: isDesktop
-            ? "Quote ready. Check the [AI EST.] items and update any prices you know."
-            : "Quote ready — check the [AI EST.] items below.",
+            ? "Quote ready. Review the items and update any prices you know better."
+            : "Quote ready — review the items below and adjust if needed.",
           type: "text"
         });
 
@@ -460,7 +460,7 @@ const ChatPage = () => {
   };
 
   const ChatContent = (
-    <div className="flex flex-col h-full bg-background relative">
+    <div className="flex flex-col h-full bg-background relative overscroll-none">
       {!isDesktop && (
         <ChatHistoryDrawer
           open={drawerOpen}
@@ -502,7 +502,7 @@ const ChatPage = () => {
       )}
 
       {/* ── Chat body ───────────────────────────────────────────── */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto bg-[#f0f2f5] px-3 py-4 space-y-3">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain bg-[#f0f2f5] px-3 py-4 space-y-3">
         {messages.map((msg) => (
           <div
             key={msg.id}
@@ -685,10 +685,10 @@ const ChatPage = () => {
                 }
               }}
               placeholder="Type your job description..."
-              className="flex-1 bg-transparent text-[14px] text-gray-900 placeholder:text-gray-400 outline-none resize-none"
+              className="flex-1 bg-transparent text-gray-900 placeholder:text-gray-400 outline-none resize-none"
               disabled={isGenerating}
               rows={1}
-              style={{ minHeight: '24px', maxHeight: '120px', lineHeight: '1.5' }}
+              style={{ minHeight: '24px', maxHeight: '120px', lineHeight: '1.5', fontSize: '16px' }}
               onInput={(e) => {
                 const t = e.target as HTMLTextAreaElement;
                 t.style.height = '24px';

@@ -96,6 +96,8 @@
     min-height: 100vh;
     /* iOS Safari fallback — overridden by the JS --app-height variable */
     min-height: -webkit-fill-available;
+    /* Prevent whole-page rubber-band scroll — only chat container should bounce */
+    overscroll-behavior: none;
   }
 }
 

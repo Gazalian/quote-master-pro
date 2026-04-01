@@ -400,7 +400,7 @@ function buildQuoteFromParsed(parsed: any, userId: string): { quote: Partial<Quo
   const quote: Partial<Quote> = {
     id: `draft-${Date.now()}`,
     user_id: userId,
-    ref: `AI-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`,
+    ref: `OQ-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`,
     date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
     client: parsed.clientName || 'Client Name',
     description: parsed.projectTitle || 'AI Generated Quotation',

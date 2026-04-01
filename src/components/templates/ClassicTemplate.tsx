@@ -161,44 +161,10 @@ export const ClassicTemplate = ({ quote, brand }: { quote: Quote; brand: BrandSe
                       </div>
                     </div>
 
-                    {/* Amount + source badge */}
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "6px",
-                        flexShrink: 0,
-                      }}
-                    >
+                    {/* Amount */}
+                    <div style={{ flexShrink: 0 }}>
                       <div style={{ fontWeight: 600, color: "#111827", fontVariantNumeric: "tabular-nums" }}>
                         {formatNGN(item.total)}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: "7pt",
-                          fontWeight: 700,
-                          padding: "2px 5px",
-                          borderRadius: "999px",
-                          backgroundColor:
-                            item.source === "my_price"
-                              ? "rgba(16,185,129,0.15)"
-                              : item.source === "regional_price"
-                              ? "rgba(245,130,32,0.15)"
-                              : "rgba(156,163,175,0.25)",
-                          color:
-                            item.source === "my_price"
-                              ? "#065f46"
-                              : item.source === "regional_price"
-                              ? "#9a4a00"
-                              : "#6b7280",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {item.source === "my_price"
-                          ? "MY PRICE"
-                          : item.source === "regional_price"
-                          ? `REGIONAL${item.regionName ? ` · ${item.regionName}` : ""}`
-                          : "AI EST."}
                       </div>
                     </div>
                   </div>

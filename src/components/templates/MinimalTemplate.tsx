@@ -147,16 +147,6 @@ export const MinimalTemplate = ({ quote, brand }: { quote: Quote; brand: BrandSe
                         <td style={{ padding: "10px 0", color: "#111827" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
                             <span>{item.name}</span>
-                            {item.source && (
-                              <span style={{
-                                fontSize: "6.5pt", fontWeight: 700, padding: "1px 5px",
-                                borderRadius: "999px", whiteSpace: "nowrap",
-                                backgroundColor: item.source === "my_price" ? "rgba(16,185,129,0.15)" : item.source === "regional_price" ? "rgba(245,130,32,0.15)" : "rgba(156,163,175,0.25)",
-                                color: item.source === "my_price" ? "#065f46" : item.source === "regional_price" ? "#9a4a00" : "#6b7280",
-                              }}>
-                                {item.source === "my_price" ? "MY PRICE" : item.source === "regional_price" ? `REGIONAL${item.regionName ? ` · ${item.regionName}` : ""}` : "AI EST."}
-                              </span>
-                            )}
                           </div>
                         </td>
                         <td
