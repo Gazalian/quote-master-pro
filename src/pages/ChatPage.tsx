@@ -51,6 +51,9 @@ const ChatPage = () => {
   const [regionalPrices, setRegionalPrices] = useState<RegionalPriceEntry[]>([]);
   const [userPreferences, setUserPreferences] = useState<UserPreferences | null>(null);
 
+  // Unanswered clarifying questions from the previous AI turn (queue logic)
+  const [pendingQuestions, setPendingQuestions] = useState<string[]>([]);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const isDesktop = useIsDesktop();
 
@@ -190,107 +193,62 @@ const ChatPage = () => {
     return newQuote;
   };
 
-  const generateQuoteWithAI = async (prompt: string, images: File[] = []): Promise<Quote> => {
+  const generateQuoteWithAI = async (
+    prompt: string,
+    images: File[] = []
+  ): Promise<{ quote: Quote; clarifyingQuestions: string[] }> => {
     if (!user) throw new Error("Must be logged in to create a quote");
 
-    console.log("=== Starting AI Quote Generation ===");
-    console.log("Prompt:", prompt);
-    console.log("Images:", images.length);
-    console.log("User ID:", user.id);
-
     try {
-      // Fetch price log entries to send to AI
       let priceLogEntries: any[] = [];
       try {
         const { priceLogAPI } = await import('@/lib/api');
         priceLogEntries = await priceLogAPI.getEntries();
-        console.log("Price log entries loaded:", priceLogEntries.length);
       } catch (e) {
         console.error("Failed to load price log:", e);
       }
 
-      // Call Gemini API with the prompt and images
-      console.log("Calling generateQuoteWithGemini...");
       const response = await generateQuoteWithGemini(
         {
           userMessage: prompt,
           images: images.length > 0 ? images : undefined,
           conversationHistory: messages
             .filter(m => m.type === "text" && !m.id.includes("loading"))
-            .map(m => ({
-              role: m.role === "user" ? "user" : "model",
-              content: m.content
-            })),
+            .map(m => ({ role: m.role === "user" ? "user" : "ai" as const, content: m.content })),
           userLocation: userState,
           userTrade,
           priceLogEntries,
           regionalPrices,
           userPreferences,
+          pendingQuestions,
         },
         user.id
       );
 
-      // If Gemini asks clarifying questions, handle them
-      if (response.clarifyingQuestions && response.clarifyingQuestions.length > 0) {
-        // Display questions to user
-        setMessages((prev) => {
-          const next = prev.filter(m => !m.id.endsWith("-ai-loading"));
-          return [
-            ...next,
-            {
-              id: Date.now().toString() + "-ai-questions",
-              role: "ai",
-              content: `I need a bit more information:\n\n${response.clarifyingQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}`,
-              type: "text"
-            }
-          ];
-        });
-        throw new Error("CLARIFYING_QUESTIONS_NEEDED");
-      }
-
-      console.log("Gemini response received:", response);
-
-      // Check if generation was successful
       if (!response.success || !response.quote) {
         throw new Error(response.error || "Failed to generate quote");
       }
 
-      // Convert Gemini response to Quote format
       const quote = response.quote as Quote;
+      if (response.reasoning) (quote as any).aiReasoning = response.reasoning;
 
-      console.log("Generated quote:", quote);
-      console.log("AI Reasoning:", response.reasoning);
-
-      // Store reasoning in a ref or state so we can display it
-      if (response.reasoning) {
-        // We'll pass this reasoning to the message display
-        (quote as any).aiReasoning = response.reasoning;
-      }
-
-      // Display confidence level if available
-      if (response.confidence && response.confidence !== "high") {
-        toast.info(`AI Confidence: ${response.confidence}`, {
-          description: "Please review the quote carefully and adjust as needed."
+      if (response.confidence === "medium") {
+        toast.info("AI Estimate — check [AI EST.] items", {
+          description: "Prices are based on Nigerian market averages. Update anything you know better."
         });
       }
 
-      return quote;
+      // Cap at 2 follow-up questions (Action-First rule)
+      const newQuestions = (response.clarifyingQuestions || []).slice(0, 2);
+      return { quote, clarifyingQuestions: newQuestions };
+
     } catch (error: any) {
-      if (error.message === "CLARIFYING_QUESTIONS_NEEDED") {
-        throw error;
-      }
-
-      // Log error details
-      console.error("Gemini API Error:", error);
-
-      // Provide helpful error message
       if (error.message?.includes("API key")) {
         throw new Error("Gemini API key not configured. Please add your API key to .env file.");
       } else if (error.message?.includes("quota")) {
         throw new Error("API quota exceeded. Please try again later.");
-      } else {
-        throw new Error(error.message || "Failed to generate quote with AI. Please try again.");
       }
+      throw new Error(error.message || "Failed to generate quote with AI. Please try again.");
     }
   };
 
@@ -345,34 +303,36 @@ const ChatPage = () => {
     ]);
 
     try {
-      const generated = await generateQuoteWithAI(prompt, imagesToSend);
+      const { quote: generated, clarifyingQuestions: newQuestions } = await generateQuoteWithAI(prompt, imagesToSend);
       setActiveQuote(generated);
-      setQuoteHistory(prev => [...prev, generated]); // Add to history
-      setSelectedImages([]); // Clear images after successful generation
+      setQuoteHistory(prev => [...prev, generated]);
+      setSelectedImages([]);
+      setPendingQuestions(newQuestions); // store for next turn (queue logic)
 
       setMessages((prev) => {
         const next = prev.filter(m => !m.id.endsWith("-ai-loading"));
         const aiMessages: ChatMessage[] = [];
 
-        // Add AI reasoning if available
+        // Show reasoning only if it has genuine content (not a placeholder)
         if ((generated as any).aiReasoning) {
           aiMessages.push({
             id: Date.now().toString() + "-ai-reasoning",
             role: "ai",
-            content: `💡 **My Analysis:**\n\n${(generated as any).aiReasoning}`,
+            content: (generated as any).aiReasoning,
             type: "text"
           });
         }
 
-        // Add success message
+        // Short confirmation — Oga foreman style
         aiMessages.push({
           id: Date.now().toString() + "-ai-response",
           role: "ai",
-          content: "I've generated a draft quote based on your requirements. You can review and edit it in the preview panel.",
+          content: isDesktop
+            ? "Quote ready. Check the [AI EST.] items and update any prices you know."
+            : "Quote ready — check the [AI EST.] items below.",
           type: "text"
         });
 
-        // Add quote
         aiMessages.push({
           id: Date.now().toString() + "-ai-quote",
           role: "ai",
@@ -380,20 +340,27 @@ const ChatPage = () => {
           type: "quote"
         });
 
+        // Follow-up questions AFTER the quote, not before (Action-First rule)
+        if (newQuestions.length > 0) {
+          aiMessages.push({
+            id: Date.now().toString() + "-ai-questions",
+            role: "ai",
+            content: `To sharpen this quote, let me know:\n\n${newQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}`,
+            type: "text"
+          });
+        }
+
         return [...next, ...aiMessages];
       });
       toast.success("Quote generated!");
     } catch (error: any) {
-      // Clarifying questions are a normal AI flow — not an error
-      if (error.message === "CLARIFYING_QUESTIONS_NEEDED") return;
-
       console.error("Quote generation error:", error);
       toast.error(error.message || "Failed to generate quote");
       setMessages((prev) => {
         const next = prev.filter(m => !m.id.endsWith("-ai-loading"));
         return [
           ...next,
-          { id: Date.now().toString() + "-ai-error", role: "ai", content: `Sorry, I ran into an error: ${error.message}. Please try again.`, type: "text" }
+          { id: Date.now().toString() + "-ai-error", role: "ai", content: `Error: ${error.message}. Please try again.`, type: "text" }
         ];
       });
     } finally {
@@ -424,8 +391,8 @@ const ChatPage = () => {
     });
     
     try {
-      // Generate a brand new draft representing the edit
-      const generated = await generateQuoteWithAI(newPrompt);
+      const { quote: generated, clarifyingQuestions: newQuestions } = await generateQuoteWithAI(newPrompt);
+      setPendingQuestions(newQuestions);
       setActiveQuote(generated);
       setQuoteHistory(prev => [...prev, generated]); // Add to history
 
@@ -487,8 +454,9 @@ const ChatPage = () => {
   const startNewChat = () => {
     setMessages(initialMessages);
     setActiveQuote(null);
-    setQuoteHistory([]); // Clear quote history
+    setQuoteHistory([]);
     setCurrentSessionId(null);
+    setPendingQuestions([]);
   };
 
   const ChatContent = (
