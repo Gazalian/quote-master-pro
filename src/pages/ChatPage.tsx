@@ -26,20 +26,65 @@ const initialMessages: ChatMessage[] = [
   }
 ];
 
+// ── Module-level cache ────────────────────────────────────────────────────
+// Lives as long as the JS bundle is loaded — survives React re-mounts caused
+// by tab switches without needing Zustand or a Context provider.
+interface ChatCache {
+  messages: ChatMessage[];
+  activeQuote: Quote | null;
+  quoteHistory: Quote[];
+  currentSessionId: string | null;
+  pendingQuestions: string[];
+}
+let _chatCache: ChatCache = {
+  messages: initialMessages,
+  activeQuote: null,
+  quoteHistory: [],
+  currentSessionId: null,
+  pendingQuestions: [],
+};
+
+// ── Client-side image compression ────────────────────────────────────────
+// Resizes and JPEG-compresses images >500 KB before sending to the AI.
+// Typical site photo (4 MB) → ~120 KB; reduces upload lag significantly.
+async function compressImage(file: File): Promise<File> {
+  if (file.size < 500_000) return file; // already small, skip
+  return new Promise((resolve) => {
+    const img = new window.Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const MAX = 1280;
+      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width  = Math.round(img.width  * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      canvas.toBlob(
+        (blob) => resolve(new File([blob!], file.name, { type: 'image/jpeg' })),
+        'image/jpeg',
+        0.82
+      );
+    };
+    img.src = url;
+  });
+}
+
 const ChatPage = () => {
   const { user } = useAuth();
-  const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
+  // Restore from module-level cache so state survives tab switches
+  const [messages, setMessages] = useState<ChatMessage[]>(_chatCache.messages);
   const [input, setInput] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
-  
+
   // State for the currently generated/active quote
-  const [activeQuote, setActiveQuote] = useState<Quote | null>(null);
-  const [quoteHistory, setQuoteHistory] = useState<Quote[]>([]); // All quotes in current session
+  const [activeQuote, setActiveQuote] = useState<Quote | null>(_chatCache.activeQuote);
+  const [quoteHistory, setQuoteHistory] = useState<Quote[]>(_chatCache.quoteHistory);
   const [isGenerating, setIsGenerating] = useState(false);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(_chatCache.currentSessionId);
 
   // Image upload state
   const [selectedImages, setSelectedImages] = useState<File[]>([]);
@@ -52,10 +97,15 @@ const ChatPage = () => {
   const [userPreferences, setUserPreferences] = useState<UserPreferences | null>(null);
 
   // Unanswered clarifying questions from the previous AI turn (queue logic)
-  const [pendingQuestions, setPendingQuestions] = useState<string[]>([]);
+  const [pendingQuestions, setPendingQuestions] = useState<string[]>(_chatCache.pendingQuestions);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const isDesktop = useIsDesktop();
+
+  // ── Sync live state back to module-level cache so tab switches don't wipe it ──
+  useEffect(() => {
+    _chatCache = { messages, activeQuote, quoteHistory, currentSessionId, pendingQuestions };
+  }, [messages, activeQuote, quoteHistory, currentSessionId, pendingQuestions]);
 
   useEffect(() => {
     const saved = localStorage.getItem('otoquote_sessions');
@@ -77,15 +127,19 @@ const ChatPage = () => {
         const client = activeQuote?.client || "No client yet";
         
         if (idx === -1) {
+          const now = new Date().toISOString();
           next.unshift({
              id: currentSessionId,
+             user_id: user?.id || '',
+             created_at: now,
+             updated_at: now,
              title,
              client,
              date: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
              preview: `${messages.length} messages`
           });
         } else {
-          next[idx] = { ...next[idx], title, client, preview: `${messages.length} messages` };
+          next[idx] = { ...next[idx], updated_at: new Date().toISOString(), title, client, preview: `${messages.length} messages` };
         }
         localStorage.setItem('otoquote_sessions', JSON.stringify(next));
         return next;
@@ -117,85 +171,10 @@ const ChatPage = () => {
     getUserPreferences(user.id).then(setUserPreferences);
   }, [user]);
 
-  const generateMockQuote = async (prompt: string): Promise<Quote> => {
-    if (!user) throw new Error("Must be logged in to create a quote");
-    
-    // Simulate AI processing time
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // Determine generic client name if none exists
-    const clientName = "Client X";
-
-    // 1. Fetch available price log entries
-    const priceLog = await quoteAPI.getQuotes().then(() => []).catch(() => []); // placeholder
-    let matchedItems: any[] = [];
-    
-    try {
-      const { priceLogAPI } = await import('@/lib/api');
-      const allPrices = await priceLogAPI.getEntries();
-      const lowerPrompt = prompt.toLowerCase();
-      
-      matchedItems = allPrices.filter((p: any) => lowerPrompt.includes(p.name.toLowerCase()));
-    } catch(e) { console.error(e) }
-
-    const items = [];
-    
-    // 2. If matched items from Price Log exist in the prompt
-    if (matchedItems.length > 0) {
-       matchedItems.forEach((match, idx) => {
-         items.push({
-           id: `i-mock-${Date.now()}-${idx}`,
-           name: match.name,
-           qty: 1,
-           unit: match.unit || "unit",
-           unitPrice: Number(match.unitPrice),
-           total: Number(match.unitPrice),
-           source: "my_price"
-         });
-       });
-    } else {
-       // 3. Fallback: AI Estimate based on available data online
-       items.push({ 
-         id: `i-mock-${Date.now()}`, 
-         name: "AI Estimated Item", 
-         qty: 1, 
-         unit: "job", 
-         unitPrice: 45000, 
-         total: 45000, 
-         source: "ai_estimate" 
-       });
-    }
-
-    const calculatedTotal = items.reduce((sum, item) => sum + item.total, 0);
-
-    const mockRef = `OQ-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
-    const newQuote: Quote = {
-      id: "draft-" + Date.now().toString(),
-      user_id: user.id,
-      ref: mockRef,
-      date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-      client: clientName,
-      description: prompt.substring(0, 50) + "...",
-      status: "APPROVED", // AI-generated drafts are implicitly approved to export
-      templateStyle: "modern",
-      isDraft: true,
-      groups: [
-        {
-          id: `g-mock-${Date.now()}`,
-          name: "Generated Items",
-          items: items as any
-        }
-      ],
-      grandTotal: calculatedTotal,
-      version: 1
-    };
-
-    return newQuote;
-  };
-
   const generateQuoteWithAI = async (
     prompt: string,
-    images: File[] = []
+    images: File[] = [],
+    onProgress?: (chars: number) => void
   ): Promise<{ quote: Quote; clarifyingQuestions: string[] }> => {
     if (!user) throw new Error("Must be logged in to create a quote");
 
@@ -222,7 +201,8 @@ const ChatPage = () => {
           userPreferences,
           pendingQuestions,
         },
-        user.id
+        user.id,
+        onProgress
       );
 
       if (!response.success || !response.quote) {
@@ -260,6 +240,15 @@ const ChatPage = () => {
       reader.onerror = reject;
     });
 
+  // Staged loading labels keyed by approximate chars received from the stream
+  const PROGRESS_STAGES: [number, string][] = [
+    [0,    "Reading your job description..."],
+    [300,  "Looking up material prices..."],
+    [800,  "Calculating quantities..."],
+    [1600, "Building your quote..."],
+    [2800, "Finalising the quotation..."],
+  ];
+
   const handleSend = async () => {
     if (!input.trim() || isGenerating) return;
 
@@ -268,13 +257,16 @@ const ChatPage = () => {
     }
 
     const prompt = input;
-    const imagesToSend = [...selectedImages]; // Keep reference to images
+    // Compress images before uploading (saves bandwidth + latency)
+    const rawImages = [...selectedImages];
     setInput("");
 
-    // Convert images to base64 so they persist in localStorage sessions
-    const imageBase64s = await Promise.all(imagesToSend.map(fileToBase64));
+    const compressedImages = await Promise.all(rawImages.map(compressImage));
 
-    // Add user message with images if any
+    // Convert compressed images to base64 so they persist in localStorage sessions
+    const imageBase64s = await Promise.all(compressedImages.map(fileToBase64));
+
+    // Optimistic UI — add user message immediately before the API call
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
       role: "user",
@@ -285,7 +277,6 @@ const ChatPage = () => {
     setMessages((prev) => [
       ...prev,
       userMessage,
-      // Add image messages using base64 URLs (persistent across reloads)
       ...imageBase64s.map((dataUrl, idx) => ({
         id: Date.now().toString() + `-img-${idx}`,
         role: "user" as const,
@@ -296,14 +287,23 @@ const ChatPage = () => {
     ]);
 
     setIsGenerating(true);
-    
+
+    const loadingId = Date.now().toString() + "-ai-loading";
     setMessages((prev) => [
       ...prev,
-      { id: Date.now().toString() + "-ai-loading", role: "ai", content: "Analyzing your request and generating quote...", type: "text" }
+      { id: loadingId, role: "ai" as const, content: PROGRESS_STAGES[0][1] as string, type: "text" as const }
     ]);
 
+    // Live progress callback — updates the loading bubble as stream tokens arrive
+    const onProgress = (chars: number) => {
+      const label = PROGRESS_STAGES.filter(([min]) => chars >= min).pop()![1];
+      setMessages((prev) =>
+        prev.map((m) => (m.id === loadingId ? { ...m, content: label } : m))
+      );
+    };
+
     try {
-      const { quote: generated, clarifyingQuestions: newQuestions } = await generateQuoteWithAI(prompt, imagesToSend);
+      const { quote: generated, clarifyingQuestions: newQuestions } = await generateQuoteWithAI(prompt, compressedImages, onProgress);
       setActiveQuote(generated);
       setQuoteHistory(prev => [...prev, generated]);
       setSelectedImages([]);
@@ -452,6 +452,7 @@ const ChatPage = () => {
   };
 
   const startNewChat = () => {
+    _chatCache = { messages: initialMessages, activeQuote: null, quoteHistory: [], currentSessionId: null, pendingQuestions: [] };
     setMessages(initialMessages);
     setActiveQuote(null);
     setQuoteHistory([]);
@@ -502,7 +503,11 @@ const ChatPage = () => {
       )}
 
       {/* ── Chat body ───────────────────────────────────────────── */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain bg-[#f0f2f5] px-3 py-4 space-y-3">
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto overscroll-contain bg-[#f0f2f5] px-3 py-4 space-y-3"
+        style={{ WebkitOverflowScrolling: 'touch' }}
+      >
         {messages.map((msg) => (
           <div
             key={msg.id}
@@ -679,7 +684,9 @@ const ChatPage = () => {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
+                // Desktop only: Enter sends, Shift+Enter inserts newline
+                // Mobile: Enter always inserts newline; use the Send button
+                if (isDesktop && e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
                   handleSend();
                 }

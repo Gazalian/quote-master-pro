@@ -480,7 +480,8 @@ function extractRetryDelay(error: any): number {
 // Main function to generate quote using Gemini
 export async function generateQuoteWithGemini(
   request: GeminiQuoteRequest,
-  userId: string
+  userId: string,
+  onProgress?: (charsReceived: number) => void
 ): Promise<GeminiQuoteResponse> {
   if (!GEMINI_API_KEY || GEMINI_API_KEY === 'placeholder') {
     return {
@@ -524,7 +525,8 @@ export async function generateQuoteWithGemini(
 
         const model = genAI.getGenerativeModel({ model: modelName });
 
-        const result = await model.generateContent({
+        // Use streaming so the caller gets real-time progress feedback
+        const streamResult = await model.generateContentStream({
           contents: [{ role: 'user', parts }],
           generationConfig: {
             temperature: 0.7,
@@ -534,8 +536,11 @@ export async function generateQuoteWithGemini(
           }
         });
 
-        const response = await result.response;
-        const text = response.text();
+        let text = '';
+        for await (const chunk of streamResult.stream) {
+          text += chunk.text();
+          onProgress?.(text.length);
+        }
 
         console.log(`[GeminiService] ${modelName} raw response (first 300 chars):`, text.substring(0, 300));
 
