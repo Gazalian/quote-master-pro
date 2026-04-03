@@ -33,6 +33,33 @@ const inputClass =
 const selectClass =
   'w-full px-4 py-3 rounded-xl border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-colors text-sm appearance-none cursor-pointer';
 
+// Map Supabase / network error messages to user-friendly text
+function friendlyError(err: any): { message: string; isRateLimit: boolean } {
+  const raw: string = (err?.message || err?.error_description || '').toLowerCase();
+  if (
+    raw.includes('429') ||
+    raw.includes('rate') ||
+    raw.includes('too many') ||
+    raw.includes('over_email_send_rate_limit') ||
+    err?.status === 429
+  ) {
+    return {
+      message: 'Too many signup attempts. Please wait 60 seconds before trying again.',
+      isRateLimit: true,
+    };
+  }
+  if (raw.includes('already registered') || raw.includes('user already exists')) {
+    return { message: 'An account with this email already exists. Try signing in instead.', isRateLimit: false };
+  }
+  if (raw.includes('invalid login') || raw.includes('invalid credentials') || raw.includes('wrong password')) {
+    return { message: 'Incorrect email or password.', isRateLimit: false };
+  }
+  if (raw.includes('email not confirmed')) {
+    return { message: 'Please confirm your email first — check your inbox (and spam folder).', isRateLimit: false };
+  }
+  return { message: err?.message || 'Something went wrong. Please try again.', isRateLimit: false };
+}
+
 export default function AuthPage() {
   const { session } = useAuth();
   const navigate = useNavigate();
@@ -41,6 +68,8 @@ export default function AuthPage() {
   const [loading, setLoading] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
   const [sentTo, setSentTo] = useState('');
+  // Countdown after a 429 — prevents the user from hammering the endpoint
+  const [cooldown, setCooldown] = useState(0);
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -48,6 +77,13 @@ export default function AuthPage() {
     trade_type: '',
     state: '',
   });
+
+  // Tick the cooldown timer down every second
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [cooldown]);
 
   useEffect(() => {
     if (session) navigate('/chat');
@@ -61,11 +97,10 @@ export default function AuthPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading || cooldown > 0) return; // guard against double-submit / cooldown
     setLoading(true);
     try {
       if (isSignUp) {
-        // Pass profile fields as user_metadata — stored instantly even without
-        // an active session. The DB trigger reads these and populates profiles.
         const { data, error } = await supabase.auth.signUp({
           email: formData.email,
           password: formData.password,
@@ -79,8 +114,7 @@ export default function AuthPage() {
         });
         if (error) throw error;
 
-        // If Supabase auto-confirmed the session (email confirm disabled),
-        // also write the profile directly so it's available immediately.
+        // Auto-confirmed (email confirmation disabled in dashboard)
         if (data.session && data.user) {
           await supabase.from('profiles').upsert({
             id: data.user.id,
@@ -105,7 +139,9 @@ export default function AuthPage() {
         navigate('/chat');
       }
     } catch (err: any) {
-      toast.error(err.message || 'Something went wrong');
+      const { message, isRateLimit } = friendlyError(err);
+      toast.error(message);
+      if (isRateLimit) setCooldown(60); // 60-second cooldown after a 429
     } finally {
       setLoading(false);
     }
@@ -281,12 +317,19 @@ export default function AuthPage() {
           {/* Submit */}
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || cooldown > 0}
             className="w-full bg-[#0056D2] hover:bg-[#0056D2]/90 text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2 transition-colors disabled:opacity-60 mt-2"
           >
             {loading && <Loader2 size={18} className="animate-spin" />}
-            {isSignUp ? 'Create Account' : 'Sign In'}
+            {cooldown > 0
+              ? `Please wait ${cooldown}s…`
+              : isSignUp ? 'Create Account' : 'Sign In'}
           </button>
+          {cooldown > 0 && (
+            <p className="text-center text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-1">
+              Too many attempts — the signup limit resets in {cooldown} second{cooldown !== 1 ? 's' : ''}.
+            </p>
+          )}
         </form>
 
         <p className="text-center text-sm text-muted-foreground mt-6">
