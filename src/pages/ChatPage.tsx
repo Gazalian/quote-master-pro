@@ -11,6 +11,7 @@ import { useIsDesktop } from "@/hooks/use-mobile";
 import { useBootstrap } from "@/hooks/useBootstrap";
 import { useSessions, useSessionMeta, useSessionMessages, useUpsertSession } from "@/hooks/useSessions";
 import { useGenerateQuote } from "@/hooks/useQuotes";
+import { useUploadChatImage } from "@/hooks/useImageUpload";
 import { useAuth } from "@/lib/AuthContext";
 import type { ChatMessage, Quote } from "@/types/quote";
 
@@ -89,6 +90,7 @@ const ChatPage = () => {
   const { data: sessionsList, isLoading: isLoadingSessions } = useSessions();
   const upsertSession = useUpsertSession();
   const generate = useGenerateQuote();
+  const uploadImage = useUploadChatImage();
   useBootstrap(); // prime the cache — referenced by QuoteCard
 
   // Local UI state
@@ -233,25 +235,65 @@ const ChatPage = () => {
     const prompt = input;
     setInput("");
 
+    // ── Image pipeline ──────────────────────────────────────────────────────
+    // 1. Compress in canvas (already non-blocking-ish via image decode)
+    // 2. Upload to backend → Supabase Storage → get a permanent URL
+    // 3. Also build the in-memory base64 for the AI call (Gemini needs bytes)
+    // The upload runs in parallel with the AI generation kickoff so the user
+    // never waits on the upload twice.
     const rawImages = selectedImages;
     const compressed = await Promise.all(rawImages.map(compressImage));
-    const apiImages = await Promise.all(compressed.map(fileToBase64Data));
 
-    const userMessage: ChatMessage = { id: newId(), role: "user", content: prompt, type: "text" };
-    const imageBubbles: ChatMessage[] = apiImages.map((img) => ({
+    // Compute base64 for Gemini AND kick off uploads in parallel
+    const [apiImages, uploaded] = await Promise.all([
+      Promise.all(compressed.map(fileToBase64Data)),
+      Promise.all(
+        compressed.map((file) =>
+          uploadImage
+            .mutateAsync({ file, sessionId })
+            .catch((err) => {
+              console.warn("[ChatPage] image upload failed, falling back to in-memory only", err);
+              return null;
+            }),
+        ),
+      ),
+    ]);
+
+    const now = new Date().toISOString();
+    const userMessage: ChatMessage = {
       id: newId(),
       role: "user",
-      content: "",
-      type: "image",
-      imageUrl: `data:${img.mimeType};base64,${img.data}`,
-    }));
+      content: prompt,
+      type: "text",
+      timestamp: now,
+      user_id: user?.id,
+      session_id: sessionId,
+    };
+    const imageBubbles: ChatMessage[] = uploaded.map((u, idx) => {
+      // Persisted message uses the Storage URL when available. If upload
+      // failed (e.g. backend offline) we still show the image inline using
+      // the base64 data URL — the user sees it locally, but the bubble is
+      // skipped on save by the backend's defensive strip-data-URL logic.
+      const fallback = apiImages[idx];
+      const url = u?.url ?? `data:${fallback.mimeType};base64,${fallback.data}`;
+      return {
+        id: newId(),
+        role: "user",
+        content: "",
+        type: "image",
+        imageUrl: url,
+        timestamp: now,
+        user_id: user?.id,
+        session_id: sessionId,
+      };
+    });
     const loadingId = `${newId()}-ai-loading`;
 
     setMessages((prev) => [
       ...prev,
       userMessage,
       ...imageBubbles,
-      { id: loadingId, role: "ai", content: PROGRESS_STAGES[0], type: "text" },
+      { id: loadingId, role: "ai", content: PROGRESS_STAGES[0], type: "text", timestamp: now },
     ]);
     setSelectedImages([]);
 
@@ -293,9 +335,11 @@ const ChatPage = () => {
 
       setMessages((prev) => {
         const next = prev.filter((m) => !m.id.endsWith("-ai-loading"));
+        const ts = new Date().toISOString();
+        const meta = { timestamp: ts, user_id: user?.id, session_id: sessionId };
         const aiBubbles: ChatMessage[] = [];
         if (draft.reasoning) {
-          aiBubbles.push({ id: newId(), role: "ai", content: draft.reasoning, type: "text" });
+          aiBubbles.push({ id: newId(), role: "ai", content: draft.reasoning, type: "text", ...meta });
         }
         aiBubbles.push({
           id: newId(),
@@ -304,8 +348,9 @@ const ChatPage = () => {
             ? "Quote ready. Review the items and update any prices you know better."
             : "Quote ready — review the items below and adjust if needed.",
           type: "text",
+          ...meta,
         });
-        aiBubbles.push({ id: newId(), role: "ai", content: "", type: "quote" });
+        aiBubbles.push({ id: newId(), role: "ai", content: "", type: "quote", ...meta });
 
         const newQs: string[] = (draft.clarifyingQuestions ?? []).slice(0, 2);
         if (newQs.length > 0) {
@@ -314,6 +359,7 @@ const ChatPage = () => {
             role: "ai",
             content: `To sharpen this quote, let me know:\n\n${newQs.map((q: string, i: number) => `${i + 1}. ${q}`).join("\n")}`,
             type: "text",
+            ...meta,
           });
         }
         return [...next, ...aiBubbles];

@@ -121,11 +121,7 @@ export const QuoteCard = ({ quote, onQuoteSaved, mode = "dashboard" }: { quote: 
       onQuoteSaved?.(savedQuote);
       toast.success("Quote saved to Quotations!");
     } catch (e: any) {
-      if (e?.status === 402) {
-        toast.error("Not enough points to save this quote.");
-      } else {
-        toast.error("Failed to save: " + (e?.message ?? "Unknown error"));
-      }
+      toast.error("Failed to save: " + (e?.message ?? "Unknown error"));
     }
   };
 
@@ -277,7 +273,7 @@ export const QuoteCard = ({ quote, onQuoteSaved, mode = "dashboard" }: { quote: 
              onClick={handleSaveDraft}
              className="w-full bg-primary text-primary-foreground py-2.5 rounded-lg text-sm font-semibold hover:opacity-90 flex items-center justify-center gap-2"
            >
-              Save to Quotations (Requires 3 Points)
+              Save to Quotations
            </button>
         ) : currentQuote.status === "APPROVED" ? (
           <>

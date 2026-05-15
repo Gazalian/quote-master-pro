@@ -93,10 +93,23 @@ export interface ChatSession {
 export interface ChatMessage {
   id: string;
   role: "user" | "ai";
+  /** Plain-text body. Empty string for pure image messages. */
   content: string;
-  type: "text" | "quote" | "image";
+  /**
+   * "text"  = body only
+   * "image" = image attachment (use imageUrl)
+   * "mixed" = body + image attachment in one bubble
+   * "quote" = renders the active QuoteCard inline (UI-only marker)
+   */
+  type: "text" | "quote" | "image" | "mixed";
+  /** Permanent Supabase Storage URL. Never a data: URL on persisted messages. */
   imageUrl?: string;
+  /** ISO-8601 timestamp set at compose time. Optional on legacy rows. */
+  timestamp?: string;
   isEdited?: boolean;
+  /** Redundant scoping fields for clients that read messages standalone. */
+  user_id?: string;
+  session_id?: string;
 }
 
 export interface PriceLogEntry {

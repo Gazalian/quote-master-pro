@@ -144,36 +144,25 @@ const ProfilePage = () => {
             </div>
           )}
 
-          {/* ── Points card ─────────────────────────────────────────────── */}
+          {/* ── Free-tier banner ────────────────────────────────────────── */}
+          {/* Replaces the previous points-balance card. All features (chat */}
+          {/* generation, quote save, PDF export, image upload) are free.   */}
           <div className="rounded-2xl p-5 lg:p-6 shadow-lg bg-gradient-to-br from-[#0056D2] to-[#003fa3] text-white">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-white/70 text-[10px] font-bold uppercase tracking-widest mb-1.5">
-                  Available points
-                </p>
-                <p className="text-white text-4xl lg:text-5xl font-black leading-none tabular-nums">
-                  {profile?.points ?? 0}
-                </p>
-                <div className="flex flex-wrap gap-2 mt-3">
-                  <span className="text-white/85 text-[11px] bg-white/10 px-2.5 py-1 rounded-lg font-medium">
-                    3 pts / quote
-                  </span>
-                  <span className="text-white/85 text-[11px] bg-white/10 px-2.5 py-1 rounded-lg font-medium">
-                    2 pts / PDF
-                  </span>
-                </div>
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center shrink-0">
+                <Zap size={20} className="text-white" />
               </div>
-              <button
-                onClick={() =>
-                  toast.info("Points are free for now!", {
-                    description: "Keep using OtoQuote AI — no payment needed.",
-                  })
-                }
-                className="flex items-center gap-1.5 bg-white text-[#0056D2] px-3.5 lg:px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm hover:bg-white/95 transition-colors whitespace-nowrap shrink-0 min-h-[44px]"
-              >
-                <Zap size={14} />
-                Buy
-              </button>
+              <div className="flex-1 min-w-0">
+                <p className="text-white/70 text-[10px] font-bold uppercase tracking-widest mb-1">
+                  Everything's free
+                </p>
+                <p className="text-white text-lg lg:text-xl font-bold leading-snug">
+                  Unlimited quotes, exports, and chat
+                </p>
+                <p className="text-white/80 text-xs lg:text-sm mt-1.5 leading-relaxed">
+                  No points, no payment, no limits — generate as many quotes as you need.
+                </p>
+              </div>
             </div>
           </div>
 

@@ -20,8 +20,10 @@ const schema = z.object({
   RATE_LIMIT_QUOTE_GEN_PER_MIN: z.coerce.number().int().positive().default(10),
   RATE_LIMIT_DEFAULT_PER_MIN: z.coerce.number().int().positive().default(120),
 
-  QUOTE_GENERATION_POINTS_COST: z.coerce.number().int().nonnegative().default(3),
-  PDF_EXPORT_POINTS_COST: z.coerce.number().int().nonnegative().default(2),
+  // Free mode: 0 means saves never deduct points. Re-enable later by setting
+  // QUOTE_GENERATION_POINTS_COST to a positive integer in the env.
+  QUOTE_GENERATION_POINTS_COST: z.coerce.number().int().nonnegative().default(0),
+  PDF_EXPORT_POINTS_COST: z.coerce.number().int().nonnegative().default(0),
 });
 
 const parsed = schema.safeParse(process.env);

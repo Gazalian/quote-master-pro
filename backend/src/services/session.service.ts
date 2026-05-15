@@ -99,10 +99,20 @@ export async function loadSessionMessages(
 export async function upsertSession(jwt: string, userId: string, input: ChatSessionUpsertInput) {
   const userClient = supabaseForUser(jwt);
 
-  // Defensive: strip image data URLs from messages before saving (large + redundant)
-  const messages = (input.messages ?? []).slice(-MAX_MESSAGES_PER_SESSION).map((m: any) =>
-    m && m.type === 'image' ? { ...m, imageUrl: '' } : m,
-  );
+  // Persist messages verbatim. Images are now Supabase Storage URLs (uploaded
+  // via /api/uploads/chat-image) rather than base64 data URIs, so the row
+  // stays small AND images survive refresh. We still cap message count to
+  // avoid runaway JSONB writes, and reject leftover data: URLs so older
+  // clients don't reintroduce the multi-MB blob problem.
+  const messages = (input.messages ?? [])
+    .slice(-MAX_MESSAGES_PER_SESSION)
+    .map((m: any) => {
+      if (m && m.type === 'image' && typeof m.imageUrl === 'string' && m.imageUrl.startsWith('data:')) {
+        // Drop the inline data — the client should have uploaded it instead.
+        return { ...m, imageUrl: '' };
+      }
+      return m;
+    });
 
   const payload = {
     id: input.id,

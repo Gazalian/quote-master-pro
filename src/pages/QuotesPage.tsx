@@ -126,7 +126,7 @@ const QuotesPage = () => {
       });
       toast.success("Quote duplicated!");
     } catch (e: any) {
-      toast.error("Failed to duplicate" + (e?.status === 402 ? ": insufficient points" : ""));
+      toast.error(`Failed to duplicate: ${e?.message ?? "unknown error"}`);
     } finally {
       setOpenDropdownId(null);
     }
