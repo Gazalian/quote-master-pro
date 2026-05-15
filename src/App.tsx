@@ -7,6 +7,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppLayout } from "@/components/AppLayout";
 import { AuthProvider, useAuth } from "@/lib/AuthContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { envConfigured } from "@/lib/supabase";
+import { EnvMissingScreen } from "@/components/EnvMissingScreen";
 
 // Route-level code splitting. Landing page no longer pulls jspdf / dnd-kit /
 // the chat page into its bundle.
@@ -46,7 +48,14 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
-const App = () => (
+const App = () => {
+  // Short-circuit before anything tries to use Supabase. Avoids the previous
+  // failure mode where AuthProvider would sit in `loading: true` forever and
+  // the UI would render a blank loader while the console spammed
+  // ERR_NAME_NOT_RESOLVED against placeholder.supabase.co.
+  if (!envConfigured) return <EnvMissingScreen />;
+
+  return (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <AuthProvider queryClient={queryClient}>
@@ -81,6 +90,7 @@ const App = () => (
       </AuthProvider>
     </TooltipProvider>
   </QueryClientProvider>
-);
+  );
+};
 
 export default App;
