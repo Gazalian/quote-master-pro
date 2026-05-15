@@ -14,6 +14,7 @@ import { sessionRoutes } from './routes/sessions.js';
 import { invoiceRoutes } from './routes/invoices.js';
 import { priceLogRoutes } from './routes/priceLog.js';
 import { profileRoutes } from './routes/profile.js';
+import { debugRoutes } from './routes/debug.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -72,6 +73,7 @@ async function buildApp(): Promise<FastifyInstance> {
   await app.register(invoiceRoutes);
   await app.register(priceLogRoutes);
   await app.register(profileRoutes);
+  await app.register(debugRoutes);
 
   return app;
 }

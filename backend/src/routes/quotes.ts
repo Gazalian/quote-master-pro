@@ -105,7 +105,7 @@ export async function quoteRoutes(app: FastifyInstance): Promise<void> {
         status: z.enum(['APPROVED', 'INVOICED', 'ARCHIVED']).optional(),
       })
       .parse(req.query);
-    reply.header('Cache-Control', 'private, max-age=20, stale-while-revalidate=120');
+    reply.header('Cache-Control', 'no-store');
     return await listQuotations(req.user!.jwt, q);
   });
 

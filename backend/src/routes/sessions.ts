@@ -26,7 +26,7 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
     const q = z.object({ limit: z.coerce.number().int().positive().max(100).default(30) }).parse(req.query);
     // List doesn't change often per visit — cache aggressively, invalidate on
     // upsert. The frontend can pull the cached list and skeleton instantly.
-    reply.header('Cache-Control', 'private, max-age=30, stale-while-revalidate=300');
+    reply.header('Cache-Control', 'no-store');
     return await listSessions(req.user!.jwt, q.limit);
   });
 

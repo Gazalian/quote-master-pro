@@ -5,10 +5,12 @@ import { getUserBootstrap, invalidateUserBootstrap } from '../services/user.serv
 export async function userRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/user/bootstrap', { preHandler: requireAuth }, async (req, reply) => {
     const u = req.user!;
-    // Cache for 60s on the client — the in-process backend cache also has a
-    // 60s TTL, so most refreshes don't even hit Supabase. `private` so any
-    // proxy treats it as user-specific.
-    reply.header('Cache-Control', 'private, max-age=60, stale-while-revalidate=120');
+    // Explicitly disable HTTP caching. React Query handles freshness on the
+    // client; HTTP caching here would (and did, in production) poison the
+    // browser with a stale empty response if a single request landed during
+    // a transient failure. The in-process backend cache (user.service.ts)
+    // still rate-limits hits to Supabase.
+    reply.header('Cache-Control', 'no-store');
     return await getUserBootstrap(u.jwt, u.id);
   });
 

@@ -31,9 +31,17 @@ export async function requireAuth(req: FastifyRequest, reply: FastifyReply): Pro
 
   const { data, error } = await supabaseService.auth.getUser(jwt);
   if (error || !data.user) {
-    req.log.warn({ err: error?.message }, 'JWT verification failed');
+    req.log.warn(
+      { err: error?.message, route: req.url, jwtPrefix: jwt.slice(0, 12) + '…' },
+      'JWT verification failed',
+    );
     return reply.code(401).send({ error: 'Invalid token' });
   }
 
   req.user = { id: data.user.id, email: data.user.email ?? null, jwt };
+
+  // Per-request log line: every authenticated request is tagged with userId
+  // so you can grep production logs for "userId=<uuid>" and reconstruct what
+  // they actually saw. This is what step 7 of the outage runbook asks for.
+  req.log.info({ userId: req.user.id, route: req.url, method: req.method }, 'auth ok');
 }

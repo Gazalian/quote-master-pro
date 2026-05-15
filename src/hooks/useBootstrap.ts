@@ -36,10 +36,24 @@ export function useBootstrap() {
   const { user } = useAuth();
   return useQuery({
     queryKey: bootstrapKey(user?.id),
-    queryFn: () => api.get<BootstrapPayload>('/api/user/bootstrap'),
+    queryFn: async () => {
+      const data = await api.get<BootstrapPayload>('/api/user/bootstrap');
+      // Defensive: surface a clear error to React Query if the backend ever
+      // returns 200 with an empty/malformed body (rather than silently
+      // rendering an empty UI).
+      if (!data || typeof data !== 'object') {
+        throw new Error('bootstrap returned no payload');
+      }
+      return data;
+    },
     enabled: !!user,
     staleTime: 60_000,
     gcTime: 5 * 60_000,
+    retry: (failureCount, err: any) => {
+      // Auth failures shouldn't retry — log out instead.
+      if (err?.status === 401) return false;
+      return failureCount < 1;
+    },
   });
 }
 
