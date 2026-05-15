@@ -97,7 +97,7 @@ export async function quoteRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // ── List (no heavy JSONB) ──────────────────────────────────────────────────
-  app.get('/api/quotes', { preHandler: requireAuth }, async (req) => {
+  app.get('/api/quotes', { preHandler: requireAuth }, async (req, reply) => {
     const q = z
       .object({
         limit: z.coerce.number().int().positive().max(100).default(50),
@@ -105,6 +105,7 @@ export async function quoteRoutes(app: FastifyInstance): Promise<void> {
         status: z.enum(['APPROVED', 'INVOICED', 'ARCHIVED']).optional(),
       })
       .parse(req.query);
+    reply.header('Cache-Control', 'private, max-age=20, stale-while-revalidate=120');
     return await listQuotations(req.user!.jwt, q);
   });
 

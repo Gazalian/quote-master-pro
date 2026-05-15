@@ -45,6 +45,57 @@ export async function loadSession(jwt: string, id: string) {
   return data;
 }
 
+/**
+ * Lightweight metadata-only load. Skips the messages array so the chat
+ * surface can render immediately (title + client + active_quote summary)
+ * while messages stream in via loadSessionMessages.
+ */
+export async function loadSessionMeta(jwt: string, id: string) {
+  const userClient = supabaseForUser(jwt);
+  const { data, error } = await userClient
+    .from('chat_sessions')
+    .select('id, title, client, active_quote, quote_history, pending_questions, created_at, updated_at')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw new ApiError(500, `load session meta failed: ${error.message}`);
+  if (!data) throw new ApiError(404, 'Session not found');
+  return data;
+}
+
+/**
+ * Paginated message slice. Returns the LAST `limit` messages (chat surfaces
+ * read newest-first) using JSONB slice. Adding offset (from the tail) lets
+ * the client fetch earlier batches on scroll-up.
+ */
+export async function loadSessionMessages(
+  jwt: string,
+  id: string,
+  opts: { limit: number; before: number | null },
+) {
+  const userClient = supabaseForUser(jwt);
+  // Single round-trip: pull `messages` + total length so the client can stop
+  // paginating when it knows it has hit the start.
+  const { data, error } = await userClient
+    .from('chat_sessions')
+    .select('messages')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw new ApiError(500, `load messages failed: ${error.message}`);
+  if (!data) throw new ApiError(404, 'Session not found');
+
+  const all = (data.messages as unknown[]) ?? [];
+  const total = all.length;
+  // `before` is an INDEX (from the start of the array). Default = total.
+  const endExclusive = opts.before == null ? total : Math.max(0, Math.min(opts.before, total));
+  const startInclusive = Math.max(0, endExclusive - opts.limit);
+  return {
+    messages: all.slice(startInclusive, endExclusive),
+    range: { start: startInclusive, end: endExclusive },
+    total,
+    hasMore: startInclusive > 0,
+  };
+}
+
 export async function upsertSession(jwt: string, userId: string, input: ChatSessionUpsertInput) {
   const userClient = supabaseForUser(jwt);
 
