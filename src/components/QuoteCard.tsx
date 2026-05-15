@@ -1,73 +1,56 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { QuoteEditor } from "./QuoteEditor";
 import { Quote, BrandSettings } from "@/types/quote";
 import { ClassicTemplate } from "./templates/ClassicTemplate";
 import { ModernTemplate } from "./templates/ModernTemplate";
 import { MinimalTemplate } from "./templates/MinimalTemplate";
 import { Loader2, Download } from "lucide-react";
-import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/AuthContext";
-import { quoteAPI } from "@/lib/api";
 import { toast } from "sonner";
 import { exportToPDF } from "@/lib/pdfExport";
-import { accumulateEditDelta } from "@/lib/behaviorEngine";
+import { useBootstrap } from "@/hooks/useBootstrap";
+import { useSaveQuote, useUpdateQuote } from "@/hooks/useQuotes";
 
 export const QuoteCard = ({ quote, onQuoteSaved, mode = "dashboard" }: { quote: Quote, onQuoteSaved?: (quote: Quote) => void, mode?: "chat" | "dashboard" }) => {
   const { user } = useAuth();
   const [currentQuote, setCurrentQuote] = useState(quote);
   const [editing, setEditing] = useState(false);
-  const [brand, setBrand] = useState<BrandSettings | null>(null);
-  const [isLoadingBrand, setIsLoadingBrand] = useState(true);
   const [isExportingPDF, setIsExportingPDF] = useState(false);
+
+  const { data: bootstrap, isLoading: isLoadingBootstrap } = useBootstrap();
+  const saveQuote = useSaveQuote();
+  const updateQuote = useUpdateQuote();
+
+  // Derived brand from the cached bootstrap. No extra round-trip per QuoteCard.
+  const brand: BrandSettings | null = useMemo(() => {
+    const p = bootstrap?.profile;
+    if (!p) return null;
+    return {
+      companyName: p.company_name || "Company Name",
+      tagline: "",
+      address: p.address || "",
+      contactPerson: p.contact_person || "",
+      phone: p.phone || "",
+      whatsapp: p.whatsapp || "",
+      email: p.email || "",
+      rcNumber: p.cac_number || "",
+      logoUrl: p.logo_url || null,
+      docPrimary: p.brand_primary_color || "170 75% 31%",
+      docSecondary: p.brand_secondary_color || "213 27% 34%",
+      templateStyle: quote.templateStyle,
+      bankDetails: {
+        bankName: p.bank_name || "GTBank",
+        accountName: p.account_name || "Example Name",
+        accountNumber: p.account_number || "0123456789",
+        paymentTerms: p.default_payment_terms || "Payment due upon completion.",
+      },
+    };
+  }, [bootstrap, quote.templateStyle]);
+  const isLoadingBrand = isLoadingBootstrap && mode !== "chat";
 
   useEffect(() => {
     setCurrentQuote(quote);
   }, [quote]);
-
-  useEffect(() => {
-    const fetchBrand = async () => {
-      if (!user || mode === "chat") return;
-      try {
-        setIsLoadingBrand(true);
-        const { data, error } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", user.id)
-          .single();
-
-        if (error) throw error;
-        
-        if (data) {
-           setBrand({
-             companyName: data.company_name || "Company Name",
-             tagline: "", // unused for now
-             address: data.address || "",
-             contactPerson: data.contact_person || "",
-             phone: data.phone || "",
-             whatsapp: data.whatsapp || "",
-             email: data.email || "",
-             rcNumber: data.cac_number || "",
-             logoUrl: data.logo_url || null,
-             docPrimary: data.brand_primary_color || "170 75% 31%",
-             docSecondary: data.brand_secondary_color || "213 27% 34%",
-             templateStyle: quote.templateStyle,
-             bankDetails: {
-                bankName: data.bank_name || "GTBank",
-                accountName: data.account_name || "Example Name",
-                accountNumber: data.account_number || "0123456789",
-                paymentTerms: data.default_payment_terms || "Payment due upon completion."
-             }
-           });
-        }
-      } catch (e) {
-        console.error("Failed to load brand for quote card", e);
-      } finally {
-        setIsLoadingBrand(false);
-      }
-    };
-    
-    fetchBrand();
-  }, [user, quote.templateStyle, mode]);
 
   if (editing) {
     return (
@@ -75,20 +58,20 @@ export const QuoteCard = ({ quote, onQuoteSaved, mode = "dashboard" }: { quote: 
         quote={currentQuote}
         onClose={() => setEditing(false)}
         onSave={async (updated) => {
-          // If the quote is not a draft and has an ID, update it in the database
           if (!updated.isDraft && updated.id) {
             try {
-              // we don't want to override generated dates when updating content
-              const payload = { ...updated };
-              delete (payload as any).date;
-              await quoteAPI.updateQuote(updated.id, payload);
+              const patch: Record<string, unknown> = {
+                client_name: updated.client,
+                description: updated.description,
+                status: updated.status,
+                template_style: updated.templateStyle,
+                grand_total: updated.grandTotal,
+                data: { groups: updated.groups },
+              };
+              await updateQuote.mutateAsync({ id: updated.id, patch });
             } catch (e) {
-              console.error("Failed to update quote in database", e);
+              console.error("Failed to update quote", e);
             }
-          }
-          // Fire-and-forget: capture the diff between original draft and user's edits
-          if (user) {
-            accumulateEditDelta(user.id, currentQuote, updated);
           }
           setCurrentQuote(updated);
           onQuoteSaved?.(updated);
@@ -101,21 +84,45 @@ export const QuoteCard = ({ quote, onQuoteSaved, mode = "dashboard" }: { quote: 
   const handleSaveDraft = async () => {
     if (!user) return;
     try {
-      const payload: Partial<Quote> = { ...currentQuote };
-      delete payload.id;
-      delete payload.isDraft;
-      delete payload.date; // Let API set the date based on creation
-
-      const savedQuote = await quoteAPI.createQuote(payload, user.id);
-
-      // Deduct 3 points locally for visual feedback immediately
-      await supabase.rpc('deduct_points', { user_id: user.id, points_to_deduct: 3 });
-
+      // One atomic backend call: save + deduct points + version assignment.
+      // Replaces the previous client-side dance of insert + broken deduct_points RPC.
+      const saved: any = await saveQuote.mutateAsync({
+        sessionId: currentQuote.session_id ?? null,
+        templateStyle: currentQuote.templateStyle,
+        draft: {
+          ref: currentQuote.ref,
+          client: currentQuote.client,
+          description: currentQuote.description,
+          groups: currentQuote.groups,
+          grandTotal: currentQuote.grandTotal,
+          templateStyle: currentQuote.templateStyle,
+        },
+      });
+      const savedQuote: Quote = {
+        id: saved.id,
+        user_id: saved.user_id,
+        ref: saved.ref,
+        date: new Date(saved.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
+        client: saved.client_name,
+        description: saved.description,
+        groups: (saved.data?.groups ?? []) as any,
+        grandTotal: Number(saved.grand_total),
+        status: saved.status,
+        templateStyle: saved.template_style,
+        version: saved.version,
+        session_id: saved.session_id ?? undefined,
+        created_at: saved.created_at,
+        updated_at: saved.updated_at,
+      };
       setCurrentQuote(savedQuote);
       onQuoteSaved?.(savedQuote);
-      toast.success("Quote successfully saved to Quotations!");
+      toast.success("Quote saved to Quotations!");
     } catch (e: any) {
-      toast.error("Failed to save draft: " + (e.message || "Unknown error"));
+      if (e?.status === 402) {
+        toast.error("Not enough points to save this quote.");
+      } else {
+        toast.error("Failed to save: " + (e?.message ?? "Unknown error"));
+      }
     }
   };
 
@@ -286,7 +293,7 @@ export const QuoteCard = ({ quote, onQuoteSaved, mode = "dashboard" }: { quote: 
             </button>
             <button
               onClick={async () => {
-                await quoteAPI.updateQuote(currentQuote.id, { status: "INVOICED" });
+                await updateQuote.mutateAsync({ id: currentQuote.id, patch: { status: "INVOICED" } });
                 setCurrentQuote({ ...currentQuote, status: "INVOICED" });
                 toast.success("Quote converted to Invoice!");
               }}
@@ -307,7 +314,7 @@ export const QuoteCard = ({ quote, onQuoteSaved, mode = "dashboard" }: { quote: 
             </button>
             <button
               onClick={async () => {
-                await quoteAPI.updateQuote(currentQuote.id, { status: "ARCHIVED" });
+                await updateQuote.mutateAsync({ id: currentQuote.id, patch: { status: "ARCHIVED" } });
                 setCurrentQuote({ ...currentQuote, status: "ARCHIVED" });
                 toast.success("Invoice marked as paid!");
               }}

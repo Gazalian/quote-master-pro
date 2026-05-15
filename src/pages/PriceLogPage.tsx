@@ -1,81 +1,86 @@
-import { useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { Search, Plus, Edit2, Trash2, Loader2 } from "lucide-react";
 import { PriceLogEditor } from "@/components/PriceLogEditor";
-import { useAuth } from "@/lib/AuthContext";
-import { priceLogAPI } from "@/lib/api";
 import { toast } from "sonner";
-
-import { PriceLogEntry } from "@/types/quote";
+import type { PriceLogEntry } from "@/types/quote";
+import {
+  usePriceLog,
+  useUpsertPriceLog,
+  useUpdatePriceLog,
+  useDeletePriceLog,
+} from "@/hooks/usePriceLog";
 
 type PriceTab = "MATERIALS" | "LABOUR" | "AI SUGGESTIONS";
-
-
 const tabs: PriceTab[] = ["MATERIALS", "LABOUR", "AI SUGGESTIONS"];
 const formatNGN = (amount: number) => `₦${amount.toLocaleString("en-NG")}`;
 
 const PriceLogPage = () => {
-  const { user } = useAuth();
   const [tab, setTab] = useState<PriceTab>("MATERIALS");
   const [search, setSearch] = useState("");
-  const [materials, setMaterials] = useState<PriceLogEntry[]>([]);
-  const [labour, setLabour] = useState<PriceLogEntry[]>([]);
   const [editing, setEditing] = useState<PriceLogEntry | null>(null);
   const [isAdding, setIsAdding] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchEntries = async () => {
-      try {
-        const entries = await priceLogAPI.getEntries();
-        setMaterials(entries.filter((e: any) => e.type === "MATERIALS"));
-        setLabour(entries.filter((e: any) => e.type === "LABOUR"));
-      } catch (error) {
-        console.error("Failed to fetch price logs (using fallback):", error);
-        // Fallback for demo if DB isn't provisioned
-        setMaterials([]);
-        setLabour([]);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchEntries();
-  }, []);
+  const { data: rows = [], isLoading } = usePriceLog();
+  const upsert = useUpsertPriceLog();
+  const update = useUpdatePriceLog();
+  const remove = useDeletePriceLog();
 
-  const items = tab === "MATERIALS" ? materials : tab === "LABOUR" ? labour : [];
-  const filtered = items.filter((i) => !search || i.name.toLowerCase().includes(search.toLowerCase()));
+  const entries: PriceLogEntry[] = useMemo(
+    () =>
+      rows
+        .filter((r) => (tab === "AI SUGGESTIONS" ? false : (r.type ?? "MATERIALS") === tab))
+        .map((r) => ({
+          id: r.id,
+          name: r.item_name,
+          unit: r.unit,
+          unitPrice: Number(r.price),
+          category: r.category ?? undefined,
+          supplier: r.supplier ?? undefined,
+          type: r.type,
+          lastUpdated: new Date(r.last_used_at).toLocaleDateString("en-GB", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+          }),
+        })),
+    [rows, tab],
+  );
+
+  const filtered = useMemo(
+    () => entries.filter((e) => !search || e.name.toLowerCase().includes(search.toLowerCase())),
+    [entries, search],
+  );
 
   const handleSave = async (entry: PriceLogEntry) => {
-    if (!user) return;
     try {
-       const payload = { ...entry, type: tab === "LABOUR" ? "LABOUR" : "MATERIALS" };
-       if (editing) {
-         await priceLogAPI.updateEntry(entry.id, payload);
-         toast.success("Price updated");
-       } else {
-         await priceLogAPI.createEntry(payload, user.id);
-         toast.success("Price added");
-       }
-       
-       // Reload
-       const entries = await priceLogAPI.getEntries();
-       setMaterials(entries.filter((e: any) => e.type === "MATERIALS"));
-       setLabour(entries.filter((e: any) => e.type === "LABOUR"));
-       
-       setEditing(null);
-       setIsAdding(false);
+      const payload = {
+        name: entry.name,
+        unit: entry.unit,
+        unitPrice: entry.unitPrice,
+        type: (tab === "LABOUR" ? "LABOUR" : "MATERIALS") as "LABOUR" | "MATERIALS",
+        category: entry.category ?? null,
+        supplier: entry.supplier ?? null,
+      };
+      if (editing && editing.id) {
+        await update.mutateAsync({ id: editing.id, ...payload });
+        toast.success("Price updated");
+      } else {
+        await upsert.mutateAsync(payload);
+        toast.success("Price added");
+      }
+      setEditing(null);
+      setIsAdding(false);
     } catch (e: any) {
-       toast.error(e.message || "Failed to save price");
+      toast.error(e?.message ?? "Failed to save price");
     }
   };
 
   const handleDelete = async (id: string) => {
     try {
-      await priceLogAPI.deleteEntry(id);
-      const setter = tab === "MATERIALS" ? setMaterials : setLabour;
-      setter((prev) => prev.filter((p) => p.id !== id));
+      await remove.mutateAsync(id);
       toast.success("Item deleted");
     } catch (e: any) {
-      toast.error(e.message || "Failed to delete");
+      toast.error(e?.message ?? "Failed to delete");
     }
   };
 
@@ -84,7 +89,10 @@ const PriceLogPage = () => {
       <PriceLogEditor
         entry={editing}
         type={tab === "LABOUR" ? "LABOUR" : "MATERIALS"}
-        onClose={() => { setEditing(null); setIsAdding(false); }}
+        onClose={() => {
+          setEditing(null);
+          setIsAdding(false);
+        }}
         onSave={handleSave}
       />
     );
@@ -130,7 +138,9 @@ const PriceLogPage = () => {
 
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
         {isLoading ? (
-          <div className="flex justify-center items-center h-20"><Loader2 className="animate-spin text-primary" /></div>
+          <div className="flex justify-center items-center h-20">
+            <Loader2 className="animate-spin text-primary" />
+          </div>
         ) : tab === "AI SUGGESTIONS" ? (
           <p className="text-center text-muted-foreground text-sm mt-8">
             AI suggestions will appear here after generating quotes
@@ -144,12 +154,10 @@ const PriceLogPage = () => {
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm text-foreground">{item.name}</p>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    {item.category ? `${item.category} · ` : ""}{item.unit}
+                    {item.category ? `${item.category} · ` : ""}
+                    {item.unit}
                   </p>
-
-                  {item.supplier && (
-                    <p className="text-xs text-muted-foreground">{item.supplier}</p>
-                  )}
+                  {item.supplier && <p className="text-xs text-muted-foreground">{item.supplier}</p>}
                 </div>
                 <div className="flex items-center gap-2 shrink-0 ml-3">
                   <div className="text-right">

@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Upload, Building2, CreditCard, Paintbrush, LayoutTemplate, Loader2, Pipette } from "lucide-react";
 import { HslColorPicker } from "react-colorful";
 import { TemplateStyle } from "@/types/quote";
-import { useAuth } from "@/lib/AuthContext";
-import { supabase } from "@/lib/supabase";
+import { useBootstrap } from "@/hooks/useBootstrap";
+import { useUpdateProfile } from "@/hooks/useProfile";
 import { toast } from "sonner";
 
 const presetColors = [
@@ -30,9 +30,9 @@ const hslObjectToString = (hsl: { h: number; s: number; l: number }) => {
 };
 
 const BrandPage = () => {
-  const { user } = useAuth();
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
+  const { data: bootstrap, isLoading } = useBootstrap();
+  const updateProfile = useUpdateProfile();
+  const isSaving = updateProfile.isPending;
 
   // Settings State
   const [primaryColor, setPrimaryColor] = useState("24 93% 54%");
@@ -63,56 +63,34 @@ const BrandPage = () => {
     document.documentElement.style.setProperty("--doc-secondary", secondaryColor);
   }, [primaryColor, secondaryColor]);
 
+  // Hydrate local form state from the cached bootstrap exactly once per fetch.
   useEffect(() => {
-    const fetchProfile = async () => {
-      if (!user) return;
-      try {
-        setIsLoading(true);
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', user.id)
-          .single();
-
-        if (error) throw error;
-        
-        if (data) {
-          setCompanyName(data.company_name || "");
-          setEmail(data.email || "");
-          setPhone(data.phone || "");
-          setWhatsapp(data.whatsapp || "");
-          setAddress(data.address || "");
-          setContactPerson(data.contact_person || "");
-          setCacNumber(data.cac_number || "");
-          setLogoUrl(data.logo_url || null);
-          setPrimaryColor(data.brand_primary_color || "24 93% 54%");
-          setSecondaryColor(data.brand_secondary_color || "212 100% 41%");
-          setBankName(data.bank_name || "");
-          setAccountName(data.account_name || "");
-          setAccountNumber(data.account_number || "");
-          setDefaultPaymentTerms(data.default_payment_terms || "");
-        }
-      } catch (error: any) {
-        console.error("Error fetching profile", error);
-        toast.error("Failed to load your brand settings");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchProfile();
-  }, [user]);
+    const data = bootstrap?.profile;
+    if (!data) return;
+    setCompanyName(data.company_name || "");
+    setEmail(data.email || "");
+    setPhone(data.phone || "");
+    setWhatsapp(data.whatsapp || "");
+    setAddress(data.address || "");
+    setContactPerson(data.contact_person || "");
+    setCacNumber(data.cac_number || "");
+    setLogoUrl(data.logo_url || null);
+    setPrimaryColor(data.brand_primary_color || "24 93% 54%");
+    setSecondaryColor(data.brand_secondary_color || "212 100% 41%");
+    setBankName(data.bank_name || "");
+    setAccountName(data.account_name || "");
+    setAccountNumber(data.account_number || "");
+    setDefaultPaymentTerms(data.default_payment_terms || "");
+  }, [bootstrap?.profile]);
 
   const handleSave = async () => {
-    if (!user) return;
     try {
-      setIsSaving(true);
-      const updates = {
+      await updateProfile.mutateAsync({
         company_name: companyName,
-        email: email,
-        phone: phone,
-        whatsapp: whatsapp,
-        address: address,
+        email,
+        phone,
+        whatsapp,
+        address,
         contact_person: contactPerson,
         cac_number: cacNumber,
         logo_url: logoUrl,
@@ -122,20 +100,10 @@ const BrandPage = () => {
         account_name: accountName,
         account_number: accountNumber,
         default_payment_terms: defaultPaymentTerms,
-        updated_at: new Date().toISOString(),
-      };
-
-      const { error } = await supabase
-        .from('profiles')
-        .update(updates)
-        .eq('id', user.id);
-
-      if (error) throw error;
-      toast.success("Brand settings saved successfully!");
+      });
+      toast.success("Brand settings saved!");
     } catch (error: any) {
-      toast.error(error.message || "Failed to save settings");
-    } finally {
-      setIsSaving(false);
+      toast.error(error?.message ?? "Failed to save settings");
     }
   };
 

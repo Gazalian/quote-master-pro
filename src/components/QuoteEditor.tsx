@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { X, Plus, Trash2, Save, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -25,7 +25,7 @@ import { Quote, QuoteGroup, QuoteItem } from "@/types/quote";
 import { SortableGroup } from "./dnd/SortableGroup";
 import { SortableItem } from "./dnd/SortableItem";
 import { useAuth } from "@/lib/AuthContext";
-import { priceLogAPI } from "@/lib/api";
+import { usePriceLog, useUpsertPriceLog } from "@/hooks/usePriceLog";
 
 const formatNGN = (amount: number) => `₦${amount.toLocaleString("en-NG")}`;
 
@@ -45,12 +45,19 @@ export const QuoteEditor = ({ quote, onClose, onSave }: Props) => {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [priceLogPrompt, setPriceLogPrompt] = useState<{ itemName: string; price: number; groupIdx: number; itemIdx: number } | null>(null);
 
-  // Load user prices
-  const [allPrices, setAllPrices] = useState<any[]>([]);
-  
-  useMemo(() => {
-    priceLogAPI.getEntries().then(entries => setAllPrices(entries)).catch(console.error);
-  }, []);
+  // Load user prices (React Query — cached across mounts)
+  const { data: priceRows = [] } = usePriceLog();
+  const upsertPrice = useUpsertPriceLog();
+  const allPrices = useMemo(
+    () =>
+      priceRows.map((p) => ({
+        id: p.id,
+        name: p.item_name,
+        unitPrice: Number(p.price),
+        unit: p.unit,
+      })),
+    [priceRows],
+  );
 
   // DnD State
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -327,24 +334,24 @@ export const QuoteEditor = ({ quote, onClose, onSave }: Props) => {
     toast.success("Quote saved!");
   };
 
-  const handleSaveToPriceLog = async () => {
+  const handleSaveToPriceLog = useCallback(async () => {
     if (!user || !priceLogPrompt) return;
     try {
-       const unit = editedQuote.groups[priceLogPrompt.groupIdx].items[priceLogPrompt.itemIdx].unit;
-       await priceLogAPI.createEntry({
-          name: priceLogPrompt.itemName,
-          unitPrice: priceLogPrompt.price,
-          unit: unit || "unit",
-          category: "General",
-          type: "MATERIALS"
-       }, user.id);
-       toast.success(`Saved to Price Log: ${priceLogPrompt.itemName}`);
+      const unit = editedQuote.groups[priceLogPrompt.groupIdx].items[priceLogPrompt.itemIdx].unit;
+      await upsertPrice.mutateAsync({
+        name: priceLogPrompt.itemName,
+        unitPrice: priceLogPrompt.price,
+        unit: unit || "unit",
+        category: "General",
+        type: "MATERIALS",
+      });
+      toast.success(`Saved to Price Log: ${priceLogPrompt.itemName}`);
     } catch (e: any) {
-       toast.error(e.message || "Failed to save to Price Log");
+      toast.error(e?.message || "Failed to save to Price Log");
     } finally {
-       setPriceLogPrompt(null);
+      setPriceLogPrompt(null);
     }
-  };
+  }, [user, priceLogPrompt, editedQuote.groups, upsertPrice]);
 
   return (
     <div className="fixed inset-0 z-[100] bg-background flex flex-col">

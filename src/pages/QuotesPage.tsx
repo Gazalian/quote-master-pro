@@ -1,10 +1,16 @@
-import { useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { ChevronLeft, Search, MoreVertical, Loader2 } from "lucide-react";
 import { QuoteCard } from "@/components/QuoteCard";
 import { toast } from "sonner";
-import { Quote, QuoteStatus } from "@/types/quote";
-import { quoteAPI } from "@/lib/api";
-import { useAuth } from "@/lib/AuthContext";
+import type { Quote, QuoteStatus } from "@/types/quote";
+import {
+  useQuotesList,
+  useQuote,
+  useUpdateQuote,
+  useDeleteQuote,
+  useSaveQuote,
+  type QuoteListRow,
+} from "@/hooks/useQuotes";
 
 const statusStyles: Record<QuoteStatus, string> = {
   APPROVED: "bg-badge-approved text-badge-approved-fg",
@@ -13,108 +19,165 @@ const statusStyles: Record<QuoteStatus, string> = {
 };
 
 const filters: (QuoteStatus | "ALL")[] = ["ALL", "APPROVED", "INVOICED", "ARCHIVED"];
-
 const formatNGN = (amount: number) => `₦${amount.toLocaleString("en-NG")}`;
 
+// Maps the lightweight list row → a full-ish Quote for QuoteCard (used only
+// when the user opens a list item; the detail view fetches the heavy data).
+function rowToQuote(row: QuoteListRow): Quote {
+  return {
+    id: row.id,
+    user_id: "",
+    ref: row.ref,
+    date: new Date(row.created_at).toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }),
+    client: row.client_name,
+    description: row.description,
+    groups: [],
+    grandTotal: Number(row.grand_total),
+    status: row.status,
+    templateStyle: (row.template_style as any) ?? "classic",
+    version: row.version,
+    session_id: row.session_id ?? undefined,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
 const QuotesPage = () => {
-  const { user } = useAuth();
-  const [quotes, setQuotes] = useState<Quote[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState<QuoteStatus | "ALL">("ALL");
   const [search, setSearch] = useState("");
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
-  const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchQuotes();
-  }, [user]);
+  const { data: rows = [], isLoading } = useQuotesList(filter);
+  const { data: selectedQuoteFull } = useQuote(selectedId);
+  const updateQuote = useUpdateQuote();
+  const deleteQuote = useDeleteQuote();
+  const saveQuote = useSaveQuote();
 
-  const fetchQuotes = async () => {
-    if (!user) return;
-    try {
-      setIsLoading(true);
-      const data = await quoteAPI.getQuotes();
-      setQuotes(data);
-    } catch (error: any) {
-      toast.error("Failed to load quotations");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const filtered = quotes.filter((q) => {
-    if (filter !== "ALL" && q.status !== filter) return false;
-    const searchTerms = search.toLowerCase();
-    if (search && !q.description.toLowerCase().includes(searchTerms) && !q.client.toLowerCase().includes(searchTerms) && !q.ref.toLowerCase().includes(searchTerms)) return false;
-    return true;
-  });
+  const filtered = useMemo(
+    () =>
+      rows.filter((q) => {
+        if (!search) return true;
+        const s = search.toLowerCase();
+        return (
+          q.description.toLowerCase().includes(s) ||
+          q.client_name?.toLowerCase().includes(s) ||
+          q.ref.toLowerCase().includes(s)
+        );
+      }),
+    [rows, search],
+  );
 
   const handleGenerateInvoice = async (id: string) => {
     try {
-      await quoteAPI.updateQuote(id, { status: "INVOICED" });
-      toast.success("Quote converted to Invoice successfully!");
+      await updateQuote.mutateAsync({ id, patch: { status: "INVOICED" } });
+      toast.success("Quote converted to Invoice!");
+    } catch {
+      toast.error("Failed to generate invoice.");
+    } finally {
       setOpenDropdownId(null);
-      fetchQuotes(); // Refresh list to see new status
-    } catch (error) {
-       toast.error("Failed to generate invoice.");
     }
   };
 
   const handleDelete = async (id: string) => {
     try {
-      await quoteAPI.deleteQuote(id);
-      toast.success("Quote deleted successfully");
-      setOpenDropdownId(null);
-      fetchQuotes(); // Refresh list
-    } catch (error) {
+      await deleteQuote.mutateAsync(id);
+      toast.success("Quote deleted");
+    } catch {
       toast.error("Failed to delete quote");
-    }
-  };
-
-  const handleDuplicate = async (quote: Quote) => {
-    try {
-      if (!user) return;
-      const newRef = `OQ-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
-      const newQuoteData: Partial<Quote> = {
-         ref: newRef,
-         client: quote.client,
-         description: quote.description,
-         status: "APPROVED",
-         templateStyle: quote.templateStyle,
-         grandTotal: quote.grandTotal,
-         groups: quote.groups
-      };
-      await quoteAPI.createQuote(newQuoteData, user.id);
-      toast.success("Quote duplicated successfully!");
+    } finally {
       setOpenDropdownId(null);
-      fetchQuotes();
-    } catch (error) {
-       toast.error("Failed to duplicate quote.");
     }
   };
 
-  if (selectedQuote) {
+  const handleArchive = async (id: string) => {
+    try {
+      await updateQuote.mutateAsync({ id, patch: { status: "ARCHIVED" } });
+    } finally {
+      setOpenDropdownId(null);
+    }
+  };
+
+  const handleDuplicate = async (row: QuoteListRow) => {
+    try {
+      // Need the full quote (with data.groups) — fetch then re-save through
+      // the atomic backend RPC so points are correctly accounted for.
+      const detail = (await import("@/lib/apiClient")).api;
+      const full = await detail.get<any>(`/api/quotes/${row.id}`);
+      const newRef = `OQ-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)
+        .toString()
+        .padStart(4, "0")}`;
+      await saveQuote.mutateAsync({
+        sessionId: null,
+        templateStyle: row.template_style as any,
+        draft: {
+          ref: newRef,
+          client: row.client_name,
+          description: row.description,
+          groups: full?.data?.groups ?? [],
+          grandTotal: Number(row.grand_total),
+          templateStyle: row.template_style as any,
+        },
+      });
+      toast.success("Quote duplicated!");
+    } catch (e: any) {
+      toast.error("Failed to duplicate" + (e?.status === 402 ? ": insufficient points" : ""));
+    } finally {
+      setOpenDropdownId(null);
+    }
+  };
+
+  if (selectedId) {
+    const selectedRow = rows.find((q) => q.id === selectedId);
+    const displayQuote: Quote | null = selectedQuoteFull
+      ? {
+          id: selectedQuoteFull.id,
+          user_id: selectedQuoteFull.user_id ?? "",
+          ref: selectedQuoteFull.ref,
+          date: new Date(selectedQuoteFull.created_at).toLocaleDateString("en-GB", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+          }),
+          client: selectedQuoteFull.client_name,
+          description: selectedQuoteFull.description,
+          groups: selectedQuoteFull.data?.groups ?? [],
+          grandTotal: Number(selectedQuoteFull.grand_total),
+          status: selectedQuoteFull.status,
+          templateStyle: selectedQuoteFull.template_style ?? "classic",
+          version: selectedQuoteFull.version,
+          session_id: selectedQuoteFull.session_id ?? undefined,
+          created_at: selectedQuoteFull.created_at,
+          updated_at: selectedQuoteFull.updated_at,
+        }
+      : selectedRow
+      ? rowToQuote(selectedRow)
+      : null;
+
     return (
       <div className="flex flex-col h-full bg-background relative">
         <div className="flex items-center gap-3 px-4 py-4 bg-card shrink-0 border-b border-border shadow-sm">
-          <button onClick={() => { setSelectedQuote(null); fetchQuotes(); }} className="text-muted-foreground hover:text-foreground">
+          <button onClick={() => setSelectedId(null)} className="text-muted-foreground hover:text-foreground">
             <ChevronLeft size={24} />
           </button>
           <div className="min-w-0">
-            <h1 className="text-xl font-bold text-foreground truncate">{selectedQuote.client}</h1>
-            <p className="text-xs text-muted-foreground font-mono">{selectedQuote.ref}</p>
+            <h1 className="text-xl font-bold text-foreground truncate">{displayQuote?.client}</h1>
+            <p className="text-xs text-muted-foreground font-mono">{displayQuote?.ref}</p>
           </div>
         </div>
         <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-secondary/10">
           <div className="max-w-4xl mx-auto">
-            <QuoteCard 
-              quote={selectedQuote} 
-              mode="dashboard" 
-              onQuoteSaved={(updated) => {
-                setSelectedQuote(updated);
-                fetchQuotes(); 
-              }}
-            />
+            {displayQuote ? (
+              <QuoteCard quote={displayQuote} mode="dashboard" />
+            ) : (
+              <div className="flex justify-center py-12">
+                <Loader2 className="w-6 h-6 animate-spin text-primary" />
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -154,8 +217,8 @@ const QuotesPage = () => {
       <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 bg-secondary/10">
         {isLoading ? (
           <div className="flex flex-col items-center justify-center h-40 text-muted-foreground space-y-3">
-             <Loader2 className="w-8 h-8 animate-spin text-primary" />
-             <p className="text-sm font-medium">Loading quotations...</p>
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            <p className="text-sm font-medium">Loading quotations...</p>
           </div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-40 text-muted-foreground border-2 border-dashed border-border rounded-xl bg-card">
@@ -164,24 +227,24 @@ const QuotesPage = () => {
           </div>
         ) : (
           filtered.map((q) => (
-            <div 
-              key={q.id} 
-              onClick={() => setSelectedQuote(q)}
+            <div
+              key={q.id}
+              onClick={() => setSelectedId(q.id)}
               className="bg-card rounded-xl p-5 border border-border/50 shadow-sm hover:shadow-md hover:border-border transition-all relative group cursor-pointer"
             >
               <div className="flex items-start justify-between mb-2">
                 <div className="flex-1 min-w-0 pr-4">
                   <div className="flex items-center gap-2 mb-1">
-                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md tracking-wide ${statusStyles[q.status]}`}>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md tracking-wide ${statusStyles[q.status]}`}>
                       {q.status}
                     </span>
                     <span className="text-xs font-mono text-muted-foreground bg-secondary px-2 rounded-md">{q.ref}</span>
                   </div>
-                  <p className="font-semibold text-base text-foreground truncate">{q.client}</p>
+                  <p className="font-semibold text-base text-foreground truncate">{q.client_name}</p>
                   <p className="text-xs text-muted-foreground mt-1 truncate">{q.description}</p>
                 </div>
                 <div className="relative">
-                  <button 
+                  <button
                     onClick={(e) => {
                       e.stopPropagation();
                       setOpenDropdownId(openDropdownId === q.id ? null : q.id);
@@ -191,37 +254,36 @@ const QuotesPage = () => {
                     <MoreVertical size={20} />
                   </button>
                   {openDropdownId === q.id && (
-                    <div className="absolute right-0 top-full mt-1 w-48 bg-card border border-border shadow-xl rounded-xl z-50 py-1.5 overflow-hidden animate-in fade-in zoom-in-95">
-                      {q.status === 'APPROVED' && (
-                        <button 
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      className="absolute right-0 top-full mt-1 w-48 bg-card border border-border shadow-xl rounded-xl z-50 py-1.5 overflow-hidden animate-in fade-in zoom-in-95"
+                    >
+                      {q.status === "APPROVED" && (
+                        <button
                           onClick={() => handleGenerateInvoice(q.id)}
                           className="w-full text-left px-4 py-2.5 text-sm font-medium text-foreground hover:bg-secondary transition-colors"
                         >
                           Generate Invoice
                         </button>
                       )}
-                      <button 
-                         onClick={() => handleDuplicate(q)}
-                         className="w-full text-left px-4 py-2.5 text-sm font-medium text-foreground hover:bg-secondary transition-colors"
+                      <button
+                        onClick={() => handleDuplicate(q)}
+                        className="w-full text-left px-4 py-2.5 text-sm font-medium text-foreground hover:bg-secondary transition-colors"
                       >
-                         Duplicate Document
+                        Duplicate Document
                       </button>
-                      {q.status !== 'ARCHIVED' && (
-                         <button 
-                          onClick={async () => {
-                             await quoteAPI.updateQuote(q.id, { status: "ARCHIVED" });
-                             fetchQuotes();
-                             setOpenDropdownId(null);
-                          }}
+                      {q.status !== "ARCHIVED" && (
+                        <button
+                          onClick={() => handleArchive(q.id)}
                           className="w-full text-left px-4 py-2.5 text-sm font-medium text-foreground hover:bg-secondary transition-colors"
                         >
                           Archive Document
                         </button>
                       )}
                       <div className="h-px bg-border/50 my-1 mx-2" />
-                      <button 
-                         onClick={() => handleDelete(q.id)}
-                         className="w-full text-left px-4 py-2.5 text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors"
+                      <button
+                        onClick={() => handleDelete(q.id)}
+                        className="w-full text-left px-4 py-2.5 text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors"
                       >
                         Delete Document
                       </button>
@@ -230,8 +292,10 @@ const QuotesPage = () => {
                 </div>
               </div>
               <div className="flex items-end justify-between mt-4 pt-4 border-t border-border/50">
-                <span className="text-xs font-semibold text-muted-foreground">{q.date}</span>
-                <span className="font-black text-lg text-primary">{formatNGN(q.grandTotal)}</span>
+                <span className="text-xs font-semibold text-muted-foreground">
+                  {new Date(q.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+                </span>
+                <span className="font-black text-lg text-primary">{formatNGN(Number(q.grand_total))}</span>
               </div>
             </div>
           ))

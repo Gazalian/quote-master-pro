@@ -1,7 +1,9 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { LogOut, Loader2, Pencil, Check, X, HelpCircle, Info, Zap } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 import { supabase } from "@/lib/supabase";
+import { useBootstrap } from "@/hooks/useBootstrap";
+import { useUpdateProfile } from "@/hooks/useProfile";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
@@ -36,121 +38,39 @@ const selectClass =
 const ProfilePage = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [profile, setProfile] = useState<any>(null);
+  const { data: bootstrap, isLoading: loadingProfile } = useBootstrap();
+  const updateProfile = useUpdateProfile();
+  const profile = bootstrap?.profile ?? null;
+  const isSaving = updateProfile.isPending;
+
   const [isEditing, setIsEditing] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [loadingProfile, setLoadingProfile] = useState(true);
   const [formData, setFormData] = useState({
     full_name: "",
     trade_type: "",
     state_operation: "",
   });
 
-  const fetchProfile = async () => {
-    if (!user) return;
-    setLoadingProfile(true);
-    try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", user.id)
-        .single();
-
-      if (error && error.code === "PGRST116") {
-        // Row doesn't exist yet — create it, pulling metadata from the auth user
-        const meta = user.user_metadata ?? {};
-        const { data: created, error: insertErr } = await supabase
-          .from("profiles")
-          .insert({
-            id: user.id,
-            email: user.email,
-            full_name: meta.full_name ?? "",
-            trade_type: meta.trade_type ?? "",
-            state_operation: meta.state_operation ?? "",
-            points: 0,
-          })
-          .select()
-          .single();
-        if (insertErr) throw insertErr;
-        if (created) {
-          setProfile(created);
-          setFormData({
-            full_name: created.full_name || "",
-            trade_type: created.trade_type || "",
-            state_operation: created.state_operation || "",
-          });
-        }
-        return;
-      }
-
-      if (error) throw error;
-
-      if (data) {
-        // If profile exists but core fields are empty, sync from user_metadata
-        const meta = user.user_metadata ?? {};
-        const needsSync =
-          !data.full_name && !data.trade_type && !data.state_operation &&
-          (meta.full_name || meta.trade_type || meta.state_operation);
-
-        if (needsSync) {
-          const { data: synced } = await supabase
-            .from("profiles")
-            .update({
-              full_name: meta.full_name ?? data.full_name,
-              trade_type: meta.trade_type ?? data.trade_type,
-              state_operation: meta.state_operation ?? data.state_operation,
-            })
-            .eq("id", user.id)
-            .select()
-            .single();
-          const merged = synced ?? data;
-          setProfile(merged);
-          setFormData({
-            full_name: merged.full_name || "",
-            trade_type: merged.trade_type || "",
-            state_operation: merged.state_operation || "",
-          });
-        } else {
-          setProfile(data);
-          setFormData({
-            full_name: data.full_name || "",
-            trade_type: data.trade_type || "",
-            state_operation: data.state_operation || "",
-          });
-        }
-      }
-    } catch (e: any) {
-      console.error("fetchProfile error:", e);
-      toast.error("Could not load profile. Please refresh.");
-    } finally {
-      setLoadingProfile(false);
-    }
-  };
-
+  // Sync form once when the cached profile arrives / changes.
   useEffect(() => {
-    fetchProfile();
-  }, [user]);
+    if (!profile) return;
+    setFormData({
+      full_name: profile.full_name || "",
+      trade_type: profile.trade_type || "",
+      state_operation: profile.state_operation || "",
+    });
+  }, [profile?.id, profile?.full_name, profile?.trade_type, profile?.state_operation]);
 
   const handleSaveProfile = async () => {
-    if (!user) return;
-    setIsSaving(true);
     try {
-      const { error } = await supabase
-        .from("profiles")
-        .update({
-          full_name: formData.full_name,
-          trade_type: formData.trade_type,
-          state_operation: formData.state_operation,
-        })
-        .eq("id", user.id);
-      if (error) throw error;
+      await updateProfile.mutateAsync({
+        full_name: formData.full_name,
+        trade_type: formData.trade_type,
+        state_operation: formData.state_operation,
+      });
       toast.success("Profile updated");
       setIsEditing(false);
-      await fetchProfile();
     } catch (error: any) {
-      toast.error(error.message || "Failed to update profile");
-    } finally {
-      setIsSaving(false);
+      toast.error(error?.message ?? "Failed to update profile");
     }
   };
 

@@ -1,526 +1,396 @@
-import { useState, useRef, useEffect } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Send, Mic, Image, Menu, Pencil, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+
 import { QuoteCard } from "@/components/QuoteCard";
 import { ChatHistoryDrawer } from "@/components/ChatHistoryDrawer";
 import { useIsDesktop } from "@/hooks/use-mobile";
-import { ChatMessage, Quote, ChatSession } from "@/types/quote";
+import { useBootstrap } from "@/hooks/useBootstrap";
+import { useSessions, useSession, useUpsertSession } from "@/hooks/useSessions";
+import { useGenerateQuote } from "@/hooks/useQuotes";
 import { useAuth } from "@/lib/AuthContext";
-import { generateQuoteWithGemini } from "@/lib/geminiService";
-import {
-  getRegionalPricesForState,
-  recordPriceObservation,
-  type RegionalPriceEntry,
-} from "@/lib/regionalPriceAPI";
-import { getUserPreferences, type UserPreferences } from "@/lib/behaviorEngine";
-import { supabase } from "@/lib/supabase";
+import type { ChatMessage, Quote } from "@/types/quote";
 
 const initialMessages: ChatMessage[] = [
   {
     id: "1",
     role: "ai",
-    content: "Good morning! 👋 I'm OtoQuote AI. Tell me about the job you want to quote — you can type, send a voice note, or attach a photo of the site.",
+    content:
+      "Good morning! 👋 I'm OtoQuote AI. Tell me about the job you want to quote — you can type or attach a photo of the site.",
     type: "text",
-  }
+  },
 ];
 
-// ── Module-level cache ────────────────────────────────────────────────────
-// Lives as long as the JS bundle is loaded — survives React re-mounts caused
-// by tab switches without needing Zustand or a Context provider.
-interface ChatCache {
-  messages: ChatMessage[];
-  activeQuote: Quote | null;
-  quoteHistory: Quote[];
-  currentSessionId: string | null;
-  pendingQuestions: string[];
-}
-let _chatCache: ChatCache = {
-  messages: initialMessages,
-  activeQuote: null,
-  quoteHistory: [],
-  currentSessionId: null,
-  pendingQuestions: [],
-};
+const newId = () => globalThis.crypto.randomUUID();
 
-// ── Client-side image compression ────────────────────────────────────────
-// Resizes and JPEG-compresses images >500 KB before sending to the AI.
-// Typical site photo (4 MB) → ~120 KB; reduces upload lag significantly.
+// ─── Client-side image compression (kept in the browser to save upload size) ─
 async function compressImage(file: File): Promise<File> {
-  if (file.size < 500_000) return file; // already small, skip
-  return new Promise((resolve) => {
+  if (file.size < 500_000) return file;
+  return new Promise((resolve, reject) => {
     const img = new window.Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
       const MAX = 1280;
       const scale = Math.min(1, MAX / Math.max(img.width, img.height));
-      const canvas = document.createElement('canvas');
-      canvas.width  = Math.round(img.width  * scale);
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * scale);
       canvas.height = Math.round(img.height * scale);
-      canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
       URL.revokeObjectURL(url);
       canvas.toBlob(
-        (blob) => resolve(new File([blob!], file.name, { type: 'image/jpeg' })),
-        'image/jpeg',
-        0.82
+        (blob) => {
+          if (!blob) return reject(new Error("compression failed"));
+          resolve(new File([blob], file.name, { type: "image/jpeg" }));
+        },
+        "image/jpeg",
+        0.82,
       );
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("image load failed"));
     };
     img.src = url;
   });
 }
 
+function fileToBase64Data(file: File): Promise<{ mimeType: string; data: string }> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      const comma = result.indexOf(",");
+      resolve({ mimeType: file.type, data: result.slice(comma + 1) });
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+const PROGRESS_STAGES: [number, string][] = [
+  [0, "Reading your job description..."],
+  [800, "Looking up material prices..."],
+  [1800, "Calculating quantities..."],
+  [3200, "Building your quote..."],
+  [5000, "Finalising the quotation..."],
+];
+
 const ChatPage = () => {
   const { user } = useAuth();
-  // Restore from module-level cache so state survives tab switches
-  const [messages, setMessages] = useState<ChatMessage[]>(_chatCache.messages);
+  const isDesktop = useIsDesktop();
+
+  // Server-driven state
+  const { data: sessionsList } = useSessions();
+  const upsertSession = useUpsertSession();
+  const generate = useGenerateQuote();
+  const { data: bootstrap } = useBootstrap();
+
+  // Local UI state — scoped to the user via React Query (cleared on signout)
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
+  const [activeQuote, setActiveQuote] = useState<Quote | null>(null);
+  const [quoteHistory, setQuoteHistory] = useState<Quote[]>([]);
+  const [pendingQuestions, setPendingQuestions] = useState<string[]>([]);
+
   const [input, setInput] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
-
-  // State for the currently generated/active quote
-  const [activeQuote, setActiveQuote] = useState<Quote | null>(_chatCache.activeQuote);
-  const [quoteHistory, setQuoteHistory] = useState<Quote[]>(_chatCache.quoteHistory);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(_chatCache.currentSessionId);
-
-  // Image upload state
   const [selectedImages, setSelectedImages] = useState<File[]>([]);
+  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+  const [progressStage, setProgressStage] = useState(0);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const progressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // User profile: state + trade (for regional price lookup)
-  const [userState, setUserState]   = useState<string>("");
-  const [userTrade, setUserTrade]   = useState<string>("general");
-  const [regionalPrices, setRegionalPrices] = useState<RegionalPriceEntry[]>([]);
-  const [userPreferences, setUserPreferences] = useState<UserPreferences | null>(null);
+  // Lazy-load session detail only when a specific session is opened
+  const { data: loadedSession } = useSession(currentSessionId);
 
-  // Unanswered clarifying questions from the previous AI turn (queue logic)
-  const [pendingQuestions, setPendingQuestions] = useState<string[]>(_chatCache.pendingQuestions);
-
-  const scrollRef   = useRef<HTMLDivElement>(null);
-  const saveTimer   = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isDesktop   = useIsDesktop();
-
-  // ── Sync live state back to module-level cache (tab-switch persistence) ──
+  // ─── Restore session from server when one is selected ────────────────────
   useEffect(() => {
-    _chatCache = { messages, activeQuote, quoteHistory, currentSessionId, pendingQuestions };
-  }, [messages, activeQuote, quoteHistory, currentSessionId, pendingQuestions]);
+    if (!loadedSession) return;
+    setMessages((loadedSession.messages as ChatMessage[]) ?? initialMessages);
+    setActiveQuote((loadedSession.active_quote as Quote) ?? null);
+    setQuoteHistory((loadedSession.quote_history as Quote[]) ?? []);
+    setPendingQuestions((loadedSession.pending_questions as string[]) ?? []);
+  }, [loadedSession?.id]);
 
-  // ── Load session list from Supabase on login ──────────────────────────────
-  useEffect(() => {
-    if (!user) return;
-    supabase
-      .from('chat_sessions')
-      .select('id, title, client, last_message, created_at, updated_at')
-      .eq('user_id', user.id)
-      .order('updated_at', { ascending: false })
-      .limit(30)
-      .then(({ data }) => {
-        if (!data) return;
-        setSessions(data.map(s => ({
-          id: s.id,
-          user_id: user.id,
-          title: s.title || 'New Session',
-          client: s.client || '',
-          date: new Date(s.updated_at || s.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
-          preview: s.last_message || '',
-          created_at: s.created_at,
-          updated_at: s.updated_at,
-        })));
-      });
-  }, [user]);
-
-  // ── Debounced Supabase upsert whenever conversation state changes ─────────
-  // Images are stripped (base64 is too large for DB); text history is kept.
+  // ─── Debounced session save (1.5s after last change) ─────────────────────
   useEffect(() => {
     if (!currentSessionId || messages.length <= 1 || !user) return;
-
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(async () => {
-      const titleMatch = messages.find(m => m.role === 'user');
-      const title      = titleMatch ? titleMatch.content.substring(0, 50) : 'New Session';
-      const client     = activeQuote?.client || '';
-      const lastText   = [...messages].reverse().find(m => m.type === 'text' && m.role === 'ai');
-      const lastMessage = lastText?.content?.substring(0, 120) || '';
 
-      // Strip base64 image data — keeps message structure intact for context
-      const storableMessages = messages.map(m =>
-        m.type === 'image' ? { ...m, imageUrl: '' } : m
-      );
+    saveTimer.current = setTimeout(() => {
+      const firstUser = messages.find((m) => m.role === "user");
+      const title = firstUser ? firstUser.content.substring(0, 50) : "New Session";
+      const lastAiText = [...messages].reverse().find((m) => m.type === "text" && m.role === "ai");
+      const lastMessage = lastAiText?.content?.substring(0, 120) ?? "";
 
-      const payload = {
+      upsertSession.mutate({
         id: currentSessionId,
-        user_id: user.id,
         title,
-        client,
+        client: activeQuote?.client ?? "",
         last_message: lastMessage,
-        messages: storableMessages,
+        messages,
         active_quote: activeQuote,
         quote_history: quoteHistory,
         pending_questions: pendingQuestions,
-      };
-
-      const { error } = await supabase
-        .from('chat_sessions')
-        .upsert(payload, { onConflict: 'id' });
-
-      if (error) console.error('[ChatPage] Session save failed:', error.message);
-
-      // Keep local session list in sync
-      setSessions(prev => {
-        const next = [...prev];
-        const idx  = next.findIndex(s => s.id === currentSessionId);
-        const now  = new Date().toISOString();
-        const entry = {
-          id: currentSessionId,
-          user_id: user.id,
-          title,
-          client,
-          date: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
-          preview: lastMessage,
-          created_at: now,
-          updated_at: now,
-        };
-        if (idx === -1) next.unshift(entry);
-        else next[idx] = { ...next[idx], ...entry };
-        return next;
       });
-    }, 1500); // 1.5 s debounce — avoids a write on every streaming chunk
-  }, [messages, activeQuote, quoteHistory, currentSessionId, pendingQuestions]);
+    }, 1500);
 
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
+  }, [messages, activeQuote, quoteHistory, pendingQuestions, currentSessionId, user]);
+
+  // ─── Scroll to bottom on new messages ─────────────────────────────────────
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages]);
 
-  // Fetch user profile → state + trade, then load regional prices + learned preferences
+  // ─── Image preview URLs (with proper cleanup) ─────────────────────────────
   useEffect(() => {
-    if (!user) return;
-    supabase
-      .from('profiles')
-      .select('state_operation, trade_type')
-      .eq('id', user.id)
-      .single()
-      .then(({ data }) => {
-        if (!data) return;
-        const state = data.state_operation || '';
-        const trade = data.trade_type || 'general';
-        setUserState(state);
-        setUserTrade(trade);
-        if (state) getRegionalPricesForState(state).then(setRegionalPrices);
-      });
-    // Fetch learned behavior preferences (fire-and-forget)
-    getUserPreferences(user.id).then(setUserPreferences);
-  }, [user]);
+    const urls = selectedImages.map((f) => URL.createObjectURL(f));
+    setImagePreviews(urls);
+    return () => {
+      urls.forEach((u) => URL.revokeObjectURL(u));
+    };
+  }, [selectedImages]);
 
-  const generateQuoteWithAI = async (
-    prompt: string,
-    images: File[] = [],
-    onProgress?: (chars: number) => void
-  ): Promise<{ quote: Quote; clarifyingQuestions: string[] }> => {
-    if (!user) throw new Error("Must be logged in to create a quote");
-
-    try {
-      let priceLogEntries: any[] = [];
-      try {
-        const { priceLogAPI } = await import('@/lib/api');
-        priceLogEntries = await priceLogAPI.getEntries();
-      } catch (e) {
-        console.error("Failed to load price log:", e);
-      }
-
-      const response = await generateQuoteWithGemini(
-        {
-          userMessage: prompt,
-          images: images.length > 0 ? images : undefined,
-          conversationHistory: messages
-            .filter(m => m.type === "text" && !m.id.includes("loading"))
-            .map(m => ({ role: m.role === "user" ? "user" : "ai" as const, content: m.content })),
-          userLocation: userState,
-          userTrade,
-          priceLogEntries,
-          regionalPrices,
-          userPreferences,
-          pendingQuestions,
-        },
-        user.id,
-        onProgress
-      );
-
-      if (!response.success || !response.quote) {
-        throw new Error(response.error || "Failed to generate quote");
-      }
-
-      const quote = response.quote as Quote;
-      if (response.reasoning) (quote as any).aiReasoning = response.reasoning;
-
-      if (response.confidence === "medium") {
-        toast.info("AI Estimate — check [AI EST.] items", {
-          description: "Prices are based on Nigerian market averages. Update anything you know better."
-        });
-      }
-
-      // Cap at 2 follow-up questions (Action-First rule)
-      const newQuestions = (response.clarifyingQuestions || []).slice(0, 2);
-      return { quote, clarifyingQuestions: newQuestions };
-
-    } catch (error: any) {
-      if (error.message?.includes("API key")) {
-        throw new Error("Gemini API key not configured. Please add your API key to .env file.");
-      } else if (error.message?.includes("quota")) {
-        throw new Error("API quota exceeded. Please try again later.");
-      }
-      throw new Error(error.message || "Failed to generate quote with AI. Please try again.");
+  // ─── Progress label animation while AI runs ──────────────────────────────
+  useEffect(() => {
+    if (!generate.isPending) {
+      if (progressTimer.current) clearInterval(progressTimer.current);
+      setProgressStage(0);
+      return;
     }
-  };
+    setProgressStage(0);
+    progressTimer.current = setInterval(() => {
+      setProgressStage((s) => Math.min(s + 1, PROGRESS_STAGES.length - 1));
+    }, 1800);
+    return () => {
+      if (progressTimer.current) clearInterval(progressTimer.current);
+    };
+  }, [generate.isPending]);
 
-  const fileToBase64 = (file: File): Promise<string> =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = reject;
-    });
+  const progressLabel = useMemo(() => PROGRESS_STAGES[progressStage][1], [progressStage]);
 
-  // Staged loading labels keyed by approximate chars received from the stream
-  const PROGRESS_STAGES: [number, string][] = [
-    [0,    "Reading your job description..."],
-    [300,  "Looking up material prices..."],
-    [800,  "Calculating quantities..."],
-    [1600, "Building your quote..."],
-    [2800, "Finalising the quotation..."],
-  ];
+  const conversationHistory = useMemo(
+    () =>
+      messages
+        .filter((m) => m.type === "text" && !m.id.endsWith("-ai-loading"))
+        .map((m) => ({ role: m.role === "user" ? ("user" as const) : ("ai" as const), content: m.content })),
+    [messages],
+  );
 
-  const handleSend = async () => {
-    if (!input.trim() || isGenerating) return;
+  // ─── Generate ─────────────────────────────────────────────────────────────
+  const handleSend = useCallback(async () => {
+    if (!input.trim() || generate.isPending) return;
 
-    if (!currentSessionId) {
-      setCurrentSessionId(crypto.randomUUID());
+    let sessionId = currentSessionId;
+    if (!sessionId) {
+      sessionId = newId();
+      setCurrentSessionId(sessionId);
     }
 
     const prompt = input;
-    // Compress images before uploading (saves bandwidth + latency)
-    const rawImages = [...selectedImages];
     setInput("");
 
-    const compressedImages = await Promise.all(rawImages.map(compressImage));
+    // Compress images off the main thread (canvas), then convert to base64
+    const rawImages = selectedImages;
+    const compressed = await Promise.all(rawImages.map(compressImage));
+    const apiImages = await Promise.all(compressed.map(fileToBase64Data));
 
-    // Convert compressed images to base64 so they persist in localStorage sessions
-    const imageBase64s = await Promise.all(compressedImages.map(fileToBase64));
-
-    // Optimistic UI — add user message immediately before the API call
-    const userMessage: ChatMessage = {
-      id: Date.now().toString(),
+    // Optimistic chat append: user bubble + image bubbles + loading bubble
+    const userMessage: ChatMessage = { id: newId(), role: "user", content: prompt, type: "text" };
+    const imageBubbles: ChatMessage[] = apiImages.map((img) => ({
+      id: newId(),
       role: "user",
-      content: prompt,
-      type: "text"
-    };
+      content: "",
+      type: "image",
+      imageUrl: `data:${img.mimeType};base64,${img.data}`,
+    }));
+    const loadingId = `${newId()}-ai-loading`;
 
     setMessages((prev) => [
       ...prev,
       userMessage,
-      ...imageBase64s.map((dataUrl, idx) => ({
-        id: Date.now().toString() + `-img-${idx}`,
-        role: "user" as const,
-        content: "",
-        type: "image" as const,
-        imageUrl: dataUrl
-      }))
+      ...imageBubbles,
+      { id: loadingId, role: "ai", content: PROGRESS_STAGES[0][1], type: "text" },
     ]);
-
-    setIsGenerating(true);
-
-    const loadingId = Date.now().toString() + "-ai-loading";
-    setMessages((prev) => [
-      ...prev,
-      { id: loadingId, role: "ai" as const, content: PROGRESS_STAGES[0][1] as string, type: "text" as const }
-    ]);
-
-    // Live progress callback — updates the loading bubble as stream tokens arrive
-    const onProgress = (chars: number) => {
-      const label = PROGRESS_STAGES.filter(([min]) => chars >= min).pop()![1];
-      setMessages((prev) =>
-        prev.map((m) => (m.id === loadingId ? { ...m, content: label } : m))
-      );
-    };
+    setSelectedImages([]);
 
     try {
-      const { quote: generated, clarifyingQuestions: newQuestions } = await generateQuoteWithAI(prompt, compressedImages, onProgress);
+      const res = await generate.mutateAsync({
+        userMessage: prompt,
+        sessionId,
+        conversationHistory,
+        pendingQuestions,
+        images: apiImages,
+      });
+
+      const draft = res.draft;
+      const generated: Quote = {
+        id: `draft-${newId()}`,
+        user_id: user?.id ?? "",
+        ref: draft.ref,
+        date: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
+        client: draft.client,
+        description: draft.description,
+        groups: draft.groups,
+        grandTotal: draft.grandTotal,
+        status: "APPROVED",
+        templateStyle: draft.templateStyle ?? "modern",
+        isDraft: true,
+        session_id: sessionId,
+        version: 1,
+      };
+
       setActiveQuote(generated);
-      setQuoteHistory(prev => [...prev, generated]);
-      setSelectedImages([]);
-      setPendingQuestions(newQuestions); // store for next turn (queue logic)
+      setQuoteHistory((prev) => [...prev, generated]);
+      setPendingQuestions((draft.clarifyingQuestions ?? []).slice(0, 2));
 
       setMessages((prev) => {
-        const next = prev.filter(m => !m.id.endsWith("-ai-loading"));
-        const aiMessages: ChatMessage[] = [];
-
-        // Show reasoning only if it has genuine content (not a placeholder)
-        if ((generated as any).aiReasoning) {
-          aiMessages.push({
-            id: Date.now().toString() + "-ai-reasoning",
-            role: "ai",
-            content: (generated as any).aiReasoning,
-            type: "text"
-          });
+        const next = prev.filter((m) => !m.id.endsWith("-ai-loading"));
+        const aiBubbles: ChatMessage[] = [];
+        if (draft.reasoning) {
+          aiBubbles.push({ id: newId(), role: "ai", content: draft.reasoning, type: "text" });
         }
-
-        // Short confirmation — Oga foreman style
-        aiMessages.push({
-          id: Date.now().toString() + "-ai-response",
+        aiBubbles.push({
+          id: newId(),
           role: "ai",
           content: isDesktop
             ? "Quote ready. Review the items and update any prices you know better."
             : "Quote ready — review the items below and adjust if needed.",
-          type: "text"
+          type: "text",
         });
+        aiBubbles.push({ id: newId(), role: "ai", content: "", type: "quote" });
 
-        aiMessages.push({
-          id: Date.now().toString() + "-ai-quote",
-          role: "ai",
-          content: "",
-          type: "quote"
-        });
-
-        // Follow-up questions AFTER the quote, not before (Action-First rule)
-        if (newQuestions.length > 0) {
-          aiMessages.push({
-            id: Date.now().toString() + "-ai-questions",
+        const newQs: string[] = (draft.clarifyingQuestions ?? []).slice(0, 2);
+        if (newQs.length > 0) {
+          aiBubbles.push({
+            id: newId(),
             role: "ai",
-            content: `To sharpen this quote, let me know:\n\n${newQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}`,
-            type: "text"
+            content: `To sharpen this quote, let me know:\n\n${newQs.map((q: string, i: number) => `${i + 1}. ${q}`).join("\n")}`,
+            type: "text",
           });
         }
-
-        return [...next, ...aiMessages];
+        return [...next, ...aiBubbles];
       });
+
       toast.success("Quote generated!");
-    } catch (error: any) {
-      console.error("Quote generation error:", error);
-      toast.error(error.message || "Failed to generate quote");
+    } catch (err: any) {
+      console.error("Quote generation error:", err);
+      toast.error(err?.message ?? "Failed to generate quote");
       setMessages((prev) => {
-        const next = prev.filter(m => !m.id.endsWith("-ai-loading"));
+        const next = prev.filter((m) => !m.id.endsWith("-ai-loading"));
         return [
           ...next,
-          { id: Date.now().toString() + "-ai-error", role: "ai", content: `Error: ${error.message}. Please try again.`, type: "text" }
+          { id: newId(), role: "ai", content: `Error: ${err?.message ?? "Please try again."}`, type: "text" },
         ];
       });
-    } finally {
-      setIsGenerating(false);
     }
-  };
+  }, [input, currentSessionId, selectedImages, conversationHistory, pendingQuestions, isDesktop, user, generate]);
+
+  const handleSaveEdit = useCallback(
+    async (id: string) => {
+      if (!editContent.trim() || generate.isPending) return;
+      const newPrompt = editContent;
+      setEditingMessageId(null);
+
+      setMessages((prev) => {
+        const idx = prev.findIndex((m) => m.id === id);
+        if (idx === -1) return prev;
+        const next = [...prev];
+        next[idx] = { ...next[idx], content: newPrompt, isEdited: true };
+        next.push({ id: `${newId()}-ai-loading`, role: "ai", content: "Understood! Updating the quote...", type: "text" });
+        return next;
+      });
+
+      try {
+        const res = await generate.mutateAsync({
+          userMessage: newPrompt,
+          sessionId: currentSessionId,
+          conversationHistory,
+          pendingQuestions,
+        });
+
+        const draft = res.draft;
+        const generated: Quote = {
+          id: `draft-${newId()}`,
+          user_id: user?.id ?? "",
+          ref: draft.ref,
+          date: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
+          client: draft.client,
+          description: draft.description,
+          groups: draft.groups,
+          grandTotal: draft.grandTotal,
+          status: "APPROVED",
+          templateStyle: draft.templateStyle ?? "modern",
+          isDraft: true,
+          session_id: currentSessionId ?? undefined,
+          version: (quoteHistory.length || 0) + 1,
+        };
+
+        setActiveQuote(generated);
+        setQuoteHistory((prev) => [...prev, generated]);
+        setPendingQuestions((draft.clarifyingQuestions ?? []).slice(0, 2));
+
+        setMessages((prev) => {
+          const next = prev.filter((m) => !m.id.endsWith("-ai-loading"));
+          return [
+            ...next,
+            { id: newId(), role: "ai", content: "I've updated the quote based on your new instructions.", type: "text" },
+            { id: newId(), role: "ai", content: "", type: "quote" },
+          ];
+        });
+        toast.success("Quote updated!");
+      } catch (err: any) {
+        toast.error(err?.message ?? "Failed to update quote");
+        setMessages((prev) => prev.filter((m) => !m.id.endsWith("-ai-loading")));
+      }
+    },
+    [editContent, currentSessionId, conversationHistory, pendingQuestions, quoteHistory, user, generate],
+  );
+
+  const startNewChat = useCallback(() => {
+    setMessages(initialMessages);
+    setActiveQuote(null);
+    setQuoteHistory([]);
+    setCurrentSessionId(null);
+    setPendingQuestions([]);
+  }, []);
 
   const startEditing = (msg: ChatMessage) => {
     setEditingMessageId(msg.id);
     setEditContent(msg.content);
   };
 
-  const handleSaveEdit = async (id: string) => {
-    if (!editContent.trim() || isGenerating) return;
-    
-    const newPrompt = editContent;
-    setEditingMessageId(null);
-    setIsGenerating(true);
-    
-    setMessages((prev) => {
-      const idx = prev.findIndex(m => m.id === id);
-      if (idx === -1) return prev;
-      
-      const next = [...prev];
-      next[idx] = { ...next[idx], content: newPrompt, isEdited: true };
-      next.push({ id: Date.now().toString() + "-ai-loading", role: "ai", content: "Understood! Updating the quote based on your new instructions...", type: "text" });
-      return next;
-    });
-    
-    try {
-      const { quote: generated, clarifyingQuestions: newQuestions } = await generateQuoteWithAI(newPrompt);
-      setPendingQuestions(newQuestions);
-      setActiveQuote(generated);
-      setQuoteHistory(prev => [...prev, generated]); // Add to history
-
-      // If the updated quote contains regional_price items, record observations
-      const allItems = generated.groups.flatMap(g => g.items);
-      const regionalItems = allItems.filter(item => item.source === 'regional_price');
-      for (const item of regionalItems) {
-        if (user && userState) {
-          recordPriceObservation({
-            userId: user.id,
-            materialName: item.name,
-            priceNgn: item.unitPrice,
-            unit: item.unit,
-            state: userState,
-            sourceType: 'quote_override',
-          });
-        }
-      }
-      if (regionalItems.length > 0) {
-        toast.info(`Price updated. Your input helps keep ${userState} estimates accurate for all tradespeople.`);
-      }
-
-      setMessages((prev) => {
-        const next = prev.filter(m => !m.id.endsWith("-ai-loading"));
-        return [
-          ...next,
-          { id: Date.now().toString() + "-ai-response", role: "ai", content: "I've updated the draft quote based on your new instructions. You can review it in the preview panel.", type: "text" },
-          { id: Date.now().toString() + "-ai-quote", role: "ai", content: "", type: "quote" }
-        ];
-      });
-      toast.success("Quote updated and saved!");
-    } catch (error: any) {
-      toast.error(error.message || "Failed to update quote");
-      setMessages((prev) => {
-        const next = prev.filter(m => !m.id.endsWith("-ai-loading"));
-        return [
-           ...next,
-           { id: Date.now().toString() + "-ai-error", role: "ai", content: "Sorry, I ran into an error updating that quote. Please try again.", type: "text" }
-        ];
-      });
-    } finally {
-      setIsGenerating(false);
-    }
+  const handleFileSelect: React.ChangeEventHandler<HTMLInputElement> = (e) => {
+    const files = Array.from(e.target.files ?? []);
+    setSelectedImages((prev) => [...prev, ...files].slice(0, 5));
+    e.target.value = "";
   };
 
-  const loadSession = async (id: string) => {
-    const { data, error } = await supabase
-      .from('chat_sessions')
-      .select('messages, active_quote, quote_history, pending_questions')
-      .eq('id', id)
-      .single();
+  const removeImage = (idx: number) =>
+    setSelectedImages((prev) => prev.filter((_, i) => i !== idx));
 
-    if (error || !data) {
-      console.error('[ChatPage] Failed to load session:', error?.message);
-      return;
-    }
-
-    setMessages((data.messages as ChatMessage[]) || initialMessages);
-    setActiveQuote((data.active_quote as Quote) || null);
-    setQuoteHistory((data.quote_history as Quote[]) || []);
-    setPendingQuestions((data.pending_questions as string[]) || []);
-    setCurrentSessionId(id);
-  };
-
-  const startNewChat = () => {
-    _chatCache = { messages: initialMessages, activeQuote: null, quoteHistory: [], currentSessionId: null, pendingQuestions: [] };
-    setMessages(initialMessages);
-    setActiveQuote(null);
-    setQuoteHistory([]);
-    setCurrentSessionId(null);
-    setPendingQuestions([]);
-  };
-
+  // ─── Render ──────────────────────────────────────────────────────────────
   const ChatContent = (
     <div className="flex flex-col h-full bg-background relative overscroll-none">
       {!isDesktop && (
         <ChatHistoryDrawer
           open={drawerOpen}
           onClose={() => setDrawerOpen(false)}
-          sessions={sessions}
-          onSelectSession={loadSession}
+          sessions={sessionsList ?? []}
+          onSelectSession={setCurrentSessionId}
           onNewChat={startNewChat}
         />
       )}
 
-      {/* ── Mobile top bar ──────────────────────────────────────── */}
       {!isDesktop && (
         <div className="flex items-center justify-between px-4 h-14 bg-white border-b border-gray-100 shrink-0 shadow-sm lg:hidden">
           <div className="flex items-center gap-3">
@@ -537,57 +407,43 @@ const ChatPage = () => {
               <span className="font-semibold text-gray-900 text-[15px]">OtoQuote AI</span>
             </div>
           </div>
-          {/* New chat shortcut */}
           <button
             onClick={startNewChat}
             className="w-9 h-9 flex items-center justify-center rounded-xl text-[#0056D2] hover:bg-blue-50 active:bg-blue-100 transition-colors"
             title="New chat"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 5v14M5 12h14"/>
+              <path d="M12 5v14M5 12h14" />
             </svg>
           </button>
         </div>
       )}
 
-      {/* ── Chat body ───────────────────────────────────────────── */}
       <div
         ref={scrollRef}
         className="flex-1 overflow-y-auto overscroll-contain bg-[#f0f2f5] px-3 py-4 space-y-3"
-        style={{ WebkitOverflowScrolling: 'touch' }}
+        style={{ WebkitOverflowScrolling: "touch" }}
       >
         {messages.map((msg) => (
           <div
             key={msg.id}
             className={`flex items-end gap-2 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
           >
-            {/* AI avatar dot */}
             {msg.role === "ai" && msg.type !== "quote" && (
               <div className="w-7 h-7 rounded-full bg-[#0056D2] flex items-center justify-center shrink-0 mb-0.5 shadow-sm">
                 <span className="text-white text-[9px] font-black">OQ</span>
               </div>
             )}
-            {/* Spacer so AI quote cards align left without avatar */}
-            {msg.role === "ai" && msg.type === "quote" && !isDesktop && (
-              <div className="w-7 shrink-0" />
-            )}
+            {msg.role === "ai" && msg.type === "quote" && !isDesktop && <div className="w-7 shrink-0" />}
 
             {msg.type === "image" ? (
               <div className="max-w-[65%]">
-                <img
-                  src={msg.imageUrl}
-                  alt="Uploaded"
-                  className="rounded-2xl border border-white/50 shadow-md max-h-[260px] w-full object-cover"
-                />
+                <img src={msg.imageUrl} alt="Uploaded" className="rounded-2xl border border-white/50 shadow-md max-h-[260px] w-full object-cover" />
               </div>
             ) : msg.type === "quote" && !isDesktop ? (
               <div className="flex-1 min-w-0">
                 {activeQuote ? (
-                  <QuoteCard
-                    quote={activeQuote}
-                    onQuoteSaved={(saved) => setActiveQuote(saved)}
-                    mode="chat"
-                  />
+                  <QuoteCard quote={activeQuote} onQuoteSaved={(saved) => setActiveQuote(saved)} mode="chat" />
                 ) : (
                   <div className="text-sm bg-destructive/10 text-destructive p-4 rounded-2xl border border-destructive/20">
                     Quote data unavailable.
@@ -599,12 +455,12 @@ const ChatPage = () => {
                 Quote generated and updated in the preview panel. 👉
               </div>
             ) : msg.id.endsWith("-ai-loading") ? (
-              /* Typing indicator */
               <div className="px-4 py-3 bg-white rounded-2xl rounded-bl-sm shadow-sm border border-gray-100">
-                <div className="flex items-center gap-1.5 h-5">
+                <div className="flex items-center gap-2 h-5">
                   <span className="w-2 h-2 rounded-full bg-gray-400 animate-bounce [animation-delay:0ms]" />
                   <span className="w-2 h-2 rounded-full bg-gray-400 animate-bounce [animation-delay:150ms]" />
                   <span className="w-2 h-2 rounded-full bg-gray-400 animate-bounce [animation-delay:300ms]" />
+                  <span className="text-[11px] text-gray-500 ml-1">{progressLabel}</span>
                 </div>
               </div>
             ) : (
@@ -624,16 +480,10 @@ const ChatPage = () => {
                       autoFocus
                     />
                     <div className="flex justify-end gap-2">
-                      <button
-                        onClick={() => setEditingMessageId(null)}
-                        className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white transition-colors"
-                      >
+                      <button onClick={() => setEditingMessageId(null)} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white transition-colors">
                         Cancel
                       </button>
-                      <button
-                        onClick={() => handleSaveEdit(msg.id)}
-                        className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-white text-[#0056D2] hover:bg-gray-50 transition-colors"
-                      >
+                      <button onClick={() => handleSaveEdit(msg.id)} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-white text-[#0056D2] hover:bg-gray-50 transition-colors">
                         Update
                       </button>
                     </div>
@@ -641,17 +491,10 @@ const ChatPage = () => {
                 ) : (
                   <>
                     <p className="whitespace-pre-wrap">{msg.content}</p>
-                    {/* Edit + Edited row — always visible on mobile, no hover needed */}
-                    {msg.role === "user" && !isGenerating && (
+                    {msg.role === "user" && !generate.isPending && (
                       <div className="flex items-center justify-end gap-2 mt-1.5">
-                        {msg.isEdited && (
-                          <span className="text-[10px] text-white/60">edited</span>
-                        )}
-                        <button
-                          onClick={() => startEditing(msg)}
-                          className="flex items-center gap-1 text-white/60 hover:text-white/90 transition-colors"
-                          title="Edit message"
-                        >
+                        {msg.isEdited && <span className="text-[10px] text-white/60">edited</span>}
+                        <button onClick={() => startEditing(msg)} className="flex items-center gap-1 text-white/60 hover:text-white/90 transition-colors" title="Edit message">
                           <Pencil size={11} />
                           <span className="text-[10px]">Edit</span>
                         </button>
@@ -663,30 +506,20 @@ const ChatPage = () => {
             )}
           </div>
         ))}
-        {/* Bottom padding so last message clears the input bar */}
         <div className="h-2" />
       </div>
 
-      {/* ── Input bar ───────────────────────────────────────────── */}
-      {/* paddingBottom extends the white background into the iOS home-indicator
-          safe zone so there is no gray gap between the input and the bottom nav */}
       <div
         className="px-3 pt-3 bg-white border-t border-gray-100 shrink-0"
         style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom, 0px))" }}
       >
-        {/* Image previews */}
         {selectedImages.length > 0 && (
           <div className="flex gap-2 flex-wrap mb-2 px-1">
-            {selectedImages.map((img, idx) => (
-              <div key={idx} className="relative">
-                <img
-                  src={URL.createObjectURL(img)}
-                  alt={`Upload ${idx + 1}`}
-                  className="w-14 h-14 object-cover rounded-xl border border-gray-200 shadow-sm"
-                />
-                {/* Always-visible remove button for touch devices */}
+            {imagePreviews.map((url, idx) => (
+              <div key={url} className="relative">
+                <img src={url} alt={`Upload ${idx + 1}`} className="w-14 h-14 object-cover rounded-xl border border-gray-200 shadow-sm" />
                 <button
-                  onClick={() => setSelectedImages(prev => prev.filter((_, i) => i !== idx))}
+                  onClick={() => removeImage(idx)}
                   className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center shadow-sm"
                 >
                   <X size={11} strokeWidth={3} />
@@ -697,23 +530,11 @@ const ChatPage = () => {
         )}
 
         <div className="flex items-end gap-2">
-          {/* Attachment */}
           <div className="relative shrink-0">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              multiple
-              onChange={(e) => {
-                const files = Array.from(e.target.files || []);
-                setSelectedImages(prev => [...prev, ...files].slice(0, 5));
-                e.target.value = "";
-              }}
-              className="hidden"
-            />
+            <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleFileSelect} className="hidden" />
             <button
               onClick={() => fileInputRef.current?.click()}
-              disabled={isGenerating}
+              disabled={generate.isPending}
               className="w-10 h-10 flex items-center justify-center rounded-2xl bg-gray-100 text-gray-500 active:bg-gray-200 transition-colors disabled:opacity-40"
               title="Attach image"
             >
@@ -726,14 +547,11 @@ const ChatPage = () => {
             </button>
           </div>
 
-          {/* Textarea pill */}
           <div className="flex-1 flex items-end bg-gray-100 rounded-[22px] px-4 py-2 border border-transparent focus-within:border-[#0056D2]/30 focus-within:bg-white transition-all duration-200">
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
-                // Desktop only: Enter sends, Shift+Enter inserts newline
-                // Mobile: Enter always inserts newline; use the Send button
                 if (isDesktop && e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
                   handleSend();
@@ -741,33 +559,30 @@ const ChatPage = () => {
               }}
               placeholder="Type your job description..."
               className="flex-1 bg-transparent text-gray-900 placeholder:text-gray-400 outline-none resize-none"
-              disabled={isGenerating}
+              disabled={generate.isPending}
               rows={1}
-              style={{ minHeight: '24px', maxHeight: '120px', lineHeight: '1.5', fontSize: '16px' }}
+              style={{ minHeight: "24px", maxHeight: "120px", lineHeight: "1.5", fontSize: "16px" }}
               onInput={(e) => {
                 const t = e.target as HTMLTextAreaElement;
-                t.style.height = '24px';
-                t.style.height = Math.min(t.scrollHeight, 120) + 'px';
-                t.style.overflowY = t.scrollHeight > 120 ? 'auto' : 'hidden';
+                t.style.height = "24px";
+                t.style.height = Math.min(t.scrollHeight, 120) + "px";
+                t.style.overflowY = t.scrollHeight > 120 ? "auto" : "hidden";
               }}
             />
           </div>
 
-          {/* Send / Mic */}
-          {input.trim() || isGenerating ? (
+          {input.trim() || generate.isPending ? (
             <button
               onClick={handleSend}
-              disabled={isGenerating}
+              disabled={generate.isPending}
               className="w-10 h-10 shrink-0 flex items-center justify-center bg-[#0056D2] text-white rounded-full shadow-md active:scale-95 transition-all disabled:opacity-60"
             >
-              {isGenerating
-                ? <Loader2 size={17} className="animate-spin" />
-                : <Send size={17} className="ml-0.5" />}
+              {generate.isPending ? <Loader2 size={17} className="animate-spin" /> : <Send size={17} className="ml-0.5" />}
             </button>
           ) : (
             <button
               onClick={() => toast.info("Voice input coming soon!", { description: "Please type your message for now." })}
-              disabled={isGenerating}
+              disabled={generate.isPending}
               className="w-10 h-10 shrink-0 flex items-center justify-center bg-gray-100 text-gray-500 rounded-full active:bg-gray-200 transition-colors"
             >
               <Mic size={19} />
@@ -778,17 +593,15 @@ const ChatPage = () => {
     </div>
   );
 
-  if (!isDesktop) {
-    return ChatContent;
-  }
+  if (!isDesktop) return ChatContent;
 
   return (
     <PanelGroup direction="horizontal" className="h-full w-full">
       <Panel defaultSize={25} minSize={20} className="h-full border-r border-border">
-        <ChatHistoryDrawer 
-          variant="sidebar" 
-          sessions={sessions}
-          onSelectSession={loadSession}
+        <ChatHistoryDrawer
+          variant="sidebar"
+          sessions={sessionsList ?? []}
+          onSelectSession={setCurrentSessionId}
           onNewChat={startNewChat}
         />
       </Panel>
@@ -802,11 +615,9 @@ const ChatPage = () => {
         <div className="w-1 h-8 bg-muted-foreground/30 rounded-full" />
       </PanelResizeHandle>
       <Panel defaultSize={40} minSize={30} className="h-full bg-white overflow-hidden flex flex-col relative">
-        {/* Subtle background decoration */}
-        <div className="absolute inset-0 bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px] opacity-30 pointer-events-none"></div>
-        <div className="absolute top-0 right-0 left-0 h-40 bg-gradient-to-b from-gray-50/80 to-transparent pointer-events-none"></div>
+        <div className="absolute inset-0 bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px] opacity-30 pointer-events-none" />
+        <div className="absolute top-0 right-0 left-0 h-40 bg-gradient-to-b from-gray-50/80 to-transparent pointer-events-none" />
 
-        {/* Quote History Tabs */}
         {quoteHistory.length > 0 && (
           <div className="relative z-10 flex-shrink-0 bg-white/80 backdrop-blur-md border-b border-gray-100 px-4 py-3 overflow-x-auto">
             <div className="flex gap-2">
@@ -816,8 +627,8 @@ const ChatPage = () => {
                   onClick={() => setActiveQuote(quote)}
                   className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
                     activeQuote?.id === quote.id
-                      ? 'bg-blue-50 text-[#0056D2] shadow-sm border border-blue-100'
-                      : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
+                      ? "bg-blue-50 text-[#0056D2] shadow-sm border border-blue-100"
+                      : "bg-white text-gray-600 hover:bg-gray-50 border border-gray-200"
                   }`}
                 >
                   Quote {index + 1} - {quote.ref}
@@ -827,7 +638,6 @@ const ChatPage = () => {
           </div>
         )}
 
-        {/* Quote Display */}
         <div className="relative z-10 flex-1 overflow-y-auto p-4 md:p-8">
           <div className="max-w-4xl mx-auto h-full flex flex-col justify-center">
             {activeQuote ? (
@@ -836,10 +646,7 @@ const ChatPage = () => {
                   quote={activeQuote}
                   onQuoteSaved={(saved) => {
                     setActiveQuote(saved);
-                    // Update in history as well
-                    setQuoteHistory(prev =>
-                      prev.map(q => q.id === saved.id ? saved : q)
-                    );
+                    setQuoteHistory((prev) => prev.map((q) => (q.id === saved.id ? saved : q)));
                   }}
                   mode="chat"
                 />
@@ -847,24 +654,14 @@ const ChatPage = () => {
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center p-6 animate-in fade-in duration-500">
                 <div className="max-w-[420px] w-full mx-auto bg-white/80 backdrop-blur-xl rounded-[2rem] shadow-[0_8px_40px_rgb(0,0,0,0.06)] border border-gray-100 p-10 flex flex-col items-center text-center relative overflow-hidden">
-                  <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-400 via-[#0056D2] to-[#F58220]"></div>
-                  
+                  <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-400 via-[#0056D2] to-[#F58220]" />
                   <div className="w-20 h-20 bg-gradient-to-tr from-blue-50 to-indigo-50 text-[#0056D2] rounded-3xl flex items-center justify-center mb-8 shadow-inner ring-1 ring-blue-100/50 transform -rotate-3 transition-transform hover:rotate-0 duration-300">
                     <Menu className="w-10 h-10" strokeWidth={1.5} />
                   </div>
-                  
                   <h3 className="text-[22px] font-semibold mb-3 text-gray-900 tracking-tight">No Quote Generated</h3>
                   <p className="text-gray-500 text-[15px] leading-relaxed mb-8">
-                    Start a conversation to generate your first professional quotation with AI. You can easily adjust prices and details later.
+                    Start a conversation to generate your first professional quotation with AI.
                   </p>
-                  
-                  <div className="w-full bg-gradient-to-br from-gray-50 to-white rounded-2xl p-4 border border-gray-100 text-left flex items-start gap-4">
-                    <span className="text-xl pt-0.5">💡</span>
-                    <p className="text-[13px] text-gray-600 font-medium leading-relaxed">
-                      <span className="text-gray-900 font-semibold block mb-0.5">Pro Tip</span>
-                      Describe the project clearly, specify measurements, or simply upload site photos for more accurate estimates.
-                    </p>
-                  </div>
                 </div>
               </div>
             )}
