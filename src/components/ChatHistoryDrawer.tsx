@@ -1,16 +1,18 @@
 import { X, MessageSquare, Plus } from "lucide-react";
 import { ChatSession } from "@/types/quote";
+import { SessionListSkeleton } from "./skeletons";
 
 interface Props {
   open?: boolean;
   variant?: "drawer" | "sidebar";
   sessions?: ChatSession[];
+  isLoading?: boolean;
   onClose?: () => void;
   onSelectSession?: (id: string) => void;
   onNewChat?: () => void;
 }
 
-export const ChatHistoryDrawer = ({ open = true, variant = "drawer", sessions = [], onClose, onSelectSession, onNewChat }: Props) => {
+export const ChatHistoryDrawer = ({ open = true, variant = "drawer", sessions = [], isLoading = false, onClose, onSelectSession, onNewChat }: Props) => {
   const innerContent = (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -39,7 +41,9 @@ export const ChatHistoryDrawer = ({ open = true, variant = "drawer", sessions = 
 
       {/* Sessions list */}
       <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1">
-        {sessions.length === 0 ? (
+        {isLoading ? (
+          <SessionListSkeleton />
+        ) : sessions.length === 0 ? (
           <p className="text-xs text-muted-foreground text-center py-8 px-4">
             No chats yet. Start a new conversation to generate your first quote.
           </p>

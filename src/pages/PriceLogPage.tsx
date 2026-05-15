@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
-import { Search, Plus, Edit2, Trash2, Loader2 } from "lucide-react";
+import { Search, Plus, Edit2, Trash2 } from "lucide-react";
 import { PriceLogEditor } from "@/components/PriceLogEditor";
+import { PriceRowSkeleton } from "@/components/skeletons";
 import { toast } from "sonner";
 import type { PriceLogEntry } from "@/types/quote";
 import {
@@ -138,9 +139,7 @@ const PriceLogPage = () => {
 
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
         {isLoading ? (
-          <div className="flex justify-center items-center h-20">
-            <Loader2 className="animate-spin text-primary" />
-          </div>
+          <PriceRowSkeleton />
         ) : tab === "AI SUGGESTIONS" ? (
           <p className="text-center text-muted-foreground text-sm mt-8">
             AI suggestions will appear here after generating quotes

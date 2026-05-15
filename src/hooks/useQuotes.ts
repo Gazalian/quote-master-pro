@@ -45,12 +45,13 @@ export interface GenerateQuoteInput {
   conversationHistory?: { role: 'user' | 'ai'; content: string }[];
   pendingQuestions?: string[];
   images?: { mimeType: string; data: string }[];
+  signal?: AbortSignal;
 }
 
 export function useGenerateQuote() {
   return useMutation({
-    mutationFn: (input: GenerateQuoteInput) =>
-      api.post<{ draft: any }>('/api/quotes/generate', input),
+    mutationFn: ({ signal, ...input }: GenerateQuoteInput) =>
+      api.post<{ draft: any }>('/api/quotes/generate', input, { signal }),
   });
 }
 
@@ -89,6 +90,18 @@ export function useDeleteQuote() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.delete<void>(`/api/quotes/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['quotes'] }),
+    // Optimistic: remove from every cached list slice immediately.
+    onMutate: async (id) => {
+      const snapshots: Array<[unknown, QuoteListRow[] | undefined]> = [];
+      qc.getQueriesData<QuoteListRow[]>({ queryKey: ['quotes'] }).forEach(([key, data]) => {
+        snapshots.push([key, data]);
+        if (data) qc.setQueryData(key, data.filter((q) => q.id !== id));
+      });
+      return { snapshots };
+    },
+    onError: (_err, _id, ctx) => {
+      ctx?.snapshots?.forEach(([key, data]) => qc.setQueryData(key as readonly unknown[], data));
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['quotes'] }),
   });
 }

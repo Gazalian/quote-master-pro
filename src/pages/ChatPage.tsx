@@ -7,7 +7,7 @@ import { QuoteCard } from "@/components/QuoteCard";
 import { ChatHistoryDrawer } from "@/components/ChatHistoryDrawer";
 import { useIsDesktop } from "@/hooks/use-mobile";
 import { useBootstrap } from "@/hooks/useBootstrap";
-import { useSessions, useSession, useUpsertSession } from "@/hooks/useSessions";
+import { useSessions, useSessionMeta, useSessionMessages, useUpsertSession } from "@/hooks/useSessions";
 import { useGenerateQuote } from "@/hooks/useQuotes";
 import { useAuth } from "@/lib/AuthContext";
 import type { ChatMessage, Quote } from "@/types/quote";
@@ -81,7 +81,7 @@ const ChatPage = () => {
   const isDesktop = useIsDesktop();
 
   // Server-driven state
-  const { data: sessionsList } = useSessions();
+  const { data: sessionsList, isLoading: isLoadingSessions } = useSessions();
   const upsertSession = useUpsertSession();
   const generate = useGenerateQuote();
   const { data: bootstrap } = useBootstrap();
@@ -106,17 +106,27 @@ const ChatPage = () => {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Lazy-load session detail only when a specific session is opened
-  const { data: loadedSession } = useSession(currentSessionId);
+  // Progressive load: metadata first (instant paint), then newest messages page.
+  const { data: sessionMeta } = useSessionMeta(currentSessionId);
+  const { data: messagePages } = useSessionMessages(currentSessionId);
+  const loadedMessages = useMemo(
+    () => messagePages?.pages.flatMap((p) => p.messages as ChatMessage[]) ?? null,
+    [messagePages],
+  );
 
   // ─── Restore session from server when one is selected ────────────────────
   useEffect(() => {
-    if (!loadedSession) return;
-    setMessages((loadedSession.messages as ChatMessage[]) ?? initialMessages);
-    setActiveQuote((loadedSession.active_quote as Quote) ?? null);
-    setQuoteHistory((loadedSession.quote_history as Quote[]) ?? []);
-    setPendingQuestions((loadedSession.pending_questions as string[]) ?? []);
-  }, [loadedSession?.id]);
+    if (!sessionMeta) return;
+    setActiveQuote((sessionMeta.active_quote as Quote) ?? null);
+    setQuoteHistory((sessionMeta.quote_history as Quote[]) ?? []);
+    setPendingQuestions((sessionMeta.pending_questions as string[]) ?? []);
+  }, [sessionMeta?.id]);
+
+  useEffect(() => {
+    if (loadedMessages && loadedMessages.length > 0) {
+      setMessages(loadedMessages);
+    }
+  }, [loadedMessages]);
 
   // ─── Debounced session save (1.5s after last change) ─────────────────────
   useEffect(() => {
@@ -386,6 +396,7 @@ const ChatPage = () => {
           open={drawerOpen}
           onClose={() => setDrawerOpen(false)}
           sessions={sessionsList ?? []}
+          isLoading={isLoadingSessions}
           onSelectSession={setCurrentSessionId}
           onNewChat={startNewChat}
         />
@@ -601,6 +612,7 @@ const ChatPage = () => {
         <ChatHistoryDrawer
           variant="sidebar"
           sessions={sessionsList ?? []}
+          isLoading={isLoadingSessions}
           onSelectSession={setCurrentSessionId}
           onNewChat={startNewChat}
         />

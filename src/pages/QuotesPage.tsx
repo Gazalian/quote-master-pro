@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { ChevronLeft, Search, MoreVertical, Loader2 } from "lucide-react";
 import { QuoteCard } from "@/components/QuoteCard";
+import { QuoteRowSkeleton } from "@/components/skeletons";
 import { toast } from "sonner";
 import type { Quote, QuoteStatus } from "@/types/quote";
 import {
@@ -216,10 +217,7 @@ const QuotesPage = () => {
 
       <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 bg-secondary/10">
         {isLoading ? (
-          <div className="flex flex-col items-center justify-center h-40 text-muted-foreground space-y-3">
-            <Loader2 className="w-8 h-8 animate-spin text-primary" />
-            <p className="text-sm font-medium">Loading quotations...</p>
-          </div>
+          <QuoteRowSkeleton />
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-40 text-muted-foreground border-2 border-dashed border-border rounded-xl bg-card">
             <p className="text-sm font-medium">No documents found</p>
