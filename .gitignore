@@ -12,6 +12,15 @@ dist
 dist-ssr
 *.local
 
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+!.env.local.example
+
+# Vite cache
+*.timestamp-*.mjs
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -22,3 +31,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Backend
+backend/dist
+backend/node_modules
+backend/.env
+backend/.env.*
+!backend/.env.example
