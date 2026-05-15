@@ -32,7 +32,7 @@ export const ChatHistoryDrawer = ({ open = true, variant = "drawer", sessions = 
       <div className="px-3 pt-3 pb-1">
         <button
           onClick={() => { onNewChat?.(); onClose?.(); }}
-          className="w-full flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2.5 rounded-xl text-sm font-semibold"
+          className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground px-4 py-3 rounded-xl text-sm font-semibold hover:bg-primary/90 active:bg-primary/80 transition-colors min-h-[44px] shadow-sm"
         >
           <Plus size={18} />
           New Chat
@@ -51,7 +51,7 @@ export const ChatHistoryDrawer = ({ open = true, variant = "drawer", sessions = 
           <button
             key={session.id}
             onClick={() => { onSelectSession?.(session.id); onClose?.(); }}
-            className="w-full text-left px-3 py-3 rounded-xl hover:bg-muted transition-colors group relative"
+            className="w-full text-left px-3 py-3 rounded-xl hover:bg-muted active:bg-muted/80 transition-colors group relative min-h-[60px]"
           >
             <div className="flex items-start gap-3">
               <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">

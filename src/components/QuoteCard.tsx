@@ -7,9 +7,12 @@ import { MinimalTemplate } from "./templates/MinimalTemplate";
 import { Loader2, Download } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 import { toast } from "sonner";
-import { exportToPDF } from "@/lib/pdfExport";
 import { useBootstrap } from "@/hooks/useBootstrap";
 import { useSaveQuote, useUpdateQuote } from "@/hooks/useQuotes";
+
+// Lazy-loaded so html2canvas + jspdf (~700 KB) don't ship in the main bundle —
+// they're only fetched when the user actually clicks Export PDF.
+const loadPdfExport = () => import("@/lib/pdfExport").then((m) => m.exportToPDF);
 
 export const QuoteCard = ({ quote, onQuoteSaved, mode = "dashboard" }: { quote: Quote, onQuoteSaved?: (quote: Quote) => void, mode?: "chat" | "dashboard" }) => {
   const { user } = useAuth();
@@ -134,7 +137,8 @@ export const QuoteCard = ({ quote, onQuoteSaved, mode = "dashboard" }: { quote: 
       // Wait a bit for toast to show
       await new Promise(resolve => setTimeout(resolve, 300));
 
-      // The template element has a unique ID based on quote ID
+      // Lazy import: fetch the PDF dep bundle only on first export
+      const exportToPDF = await loadPdfExport();
       const elementId = `quote-template-${currentQuote.id}`;
       await exportToPDF(elementId, currentQuote);
 

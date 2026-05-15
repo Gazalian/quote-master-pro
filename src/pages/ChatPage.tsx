@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
-import { Send, Mic, Image, Menu, Pencil, Loader2, X } from "lucide-react";
+import { Send, Mic, Image, Menu, Loader2, X, StopCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 
 import { QuoteCard } from "@/components/QuoteCard";
 import { ChatHistoryDrawer } from "@/components/ChatHistoryDrawer";
+import { MessageBubble } from "@/components/chat/MessageBubble";
+import { ChatSkeleton } from "@/components/skeletons";
 import { useIsDesktop } from "@/hooks/use-mobile";
 import { useBootstrap } from "@/hooks/useBootstrap";
 import { useSessions, useSessionMeta, useSessionMessages, useUpsertSession } from "@/hooks/useSessions";
@@ -12,19 +14,21 @@ import { useGenerateQuote } from "@/hooks/useQuotes";
 import { useAuth } from "@/lib/AuthContext";
 import type { ChatMessage, Quote } from "@/types/quote";
 
+// We intentionally show no greeting on first paint for a returning user with
+// no sessions — keeps the surface clean. For a brand-new chat we inject this.
 const initialMessages: ChatMessage[] = [
   {
     id: "1",
     role: "ai",
     content:
-      "Good morning! 👋 I'm OtoQuote AI. Tell me about the job you want to quote — you can type or attach a photo of the site.",
+      "👋 I'm OtoQuote AI. Tell me about the job you want to quote — type it, or attach a photo of the site.",
     type: "text",
   },
 ];
 
 const newId = () => globalThis.crypto.randomUUID();
 
-// ─── Client-side image compression (kept in the browser to save upload size) ─
+// ─── Image compression: 4MB phone photo → ~120KB JPEG ──────────────────────
 async function compressImage(file: File): Promise<File> {
   if (file.size < 500_000) return file;
   return new Promise((resolve, reject) => {
@@ -68,13 +72,14 @@ function fileToBase64Data(file: File): Promise<{ mimeType: string; data: string 
   });
 }
 
-const PROGRESS_STAGES: [number, string][] = [
-  [0, "Reading your job description..."],
-  [800, "Looking up material prices..."],
-  [1800, "Calculating quantities..."],
-  [3200, "Building your quote..."],
-  [5000, "Finalising the quotation..."],
-];
+// Stage labels keyed by time elapsed; the AI call returns in 5-12s typically.
+const PROGRESS_STAGES = [
+  "Reading your job description…",
+  "Looking up material prices…",
+  "Calculating quantities…",
+  "Building your quote…",
+  "Finalising the quotation…",
+] as const;
 
 const ChatPage = () => {
   const { user } = useAuth();
@@ -84,9 +89,9 @@ const ChatPage = () => {
   const { data: sessionsList, isLoading: isLoadingSessions } = useSessions();
   const upsertSession = useUpsertSession();
   const generate = useGenerateQuote();
-  const { data: bootstrap } = useBootstrap();
+  useBootstrap(); // prime the cache — referenced by QuoteCard
 
-  // Local UI state — scoped to the user via React Query (cleared on signout)
+  // Local UI state
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [activeQuote, setActiveQuote] = useState<Quote | null>(null);
@@ -105,16 +110,22 @@ const ChatPage = () => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  // AbortController for the in-flight AI request — lets us cancel on session
+  // switch or via the explicit Cancel button.
+  const abortRef = useRef<AbortController | null>(null);
 
-  // Progressive load: metadata first (instant paint), then newest messages page.
+  // Progressive load: metadata first (instant), messages second (paginated).
   const { data: sessionMeta } = useSessionMeta(currentSessionId);
-  const { data: messagePages } = useSessionMessages(currentSessionId);
+  const { data: messagePages, isFetching: isFetchingMessages } = useSessionMessages(currentSessionId);
   const loadedMessages = useMemo(
     () => messagePages?.pages.flatMap((p) => p.messages as ChatMessage[]) ?? null,
     [messagePages],
   );
 
-  // ─── Restore session from server when one is selected ────────────────────
+  const showChatSkeleton =
+    !!currentSessionId && !loadedMessages && isFetchingMessages;
+
+  // Hydrate header state from the lightweight meta call
   useEffect(() => {
     if (!sessionMeta) return;
     setActiveQuote((sessionMeta.active_quote as Quote) ?? null);
@@ -122,11 +133,18 @@ const ChatPage = () => {
     setPendingQuestions((sessionMeta.pending_questions as string[]) ?? []);
   }, [sessionMeta?.id]);
 
+  // Hydrate messages from the paginated endpoint
   useEffect(() => {
-    if (loadedMessages && loadedMessages.length > 0) {
-      setMessages(loadedMessages);
-    }
+    if (loadedMessages && loadedMessages.length > 0) setMessages(loadedMessages);
   }, [loadedMessages]);
+
+  // ─── Cancel in-flight AI when user switches sessions ─────────────────────
+  useEffect(() => {
+    return () => {
+      // Component unmount or session id change: abort any pending call
+      abortRef.current?.abort();
+    };
+  }, [currentSessionId]);
 
   // ─── Debounced session save (1.5s after last change) ─────────────────────
   useEffect(() => {
@@ -156,21 +174,24 @@ const ChatPage = () => {
     };
   }, [messages, activeQuote, quoteHistory, pendingQuestions, currentSessionId, user]);
 
-  // ─── Scroll to bottom on new messages ─────────────────────────────────────
+  // ─── Scroll to bottom on new messages (rAF: avoid layout-thrash) ──────────
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+    const el = scrollRef.current;
+    if (!el) return;
+    const id = requestAnimationFrame(() => {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    });
+    return () => cancelAnimationFrame(id);
   }, [messages]);
 
-  // ─── Image preview URLs (with proper cleanup) ─────────────────────────────
+  // ─── Image preview URLs (revoked on cleanup) ──────────────────────────────
   useEffect(() => {
     const urls = selectedImages.map((f) => URL.createObjectURL(f));
     setImagePreviews(urls);
-    return () => {
-      urls.forEach((u) => URL.revokeObjectURL(u));
-    };
+    return () => urls.forEach((u) => URL.revokeObjectURL(u));
   }, [selectedImages]);
 
-  // ─── Progress label animation while AI runs ──────────────────────────────
+  // ─── Progress animation while AI runs ────────────────────────────────────
   useEffect(() => {
     if (!generate.isPending) {
       if (progressTimer.current) clearInterval(progressTimer.current);
@@ -186,13 +207,16 @@ const ChatPage = () => {
     };
   }, [generate.isPending]);
 
-  const progressLabel = useMemo(() => PROGRESS_STAGES[progressStage][1], [progressStage]);
+  const progressLabel = PROGRESS_STAGES[progressStage];
 
   const conversationHistory = useMemo(
     () =>
       messages
         .filter((m) => m.type === "text" && !m.id.endsWith("-ai-loading"))
-        .map((m) => ({ role: m.role === "user" ? ("user" as const) : ("ai" as const), content: m.content })),
+        .map((m) => ({
+          role: m.role === "user" ? ("user" as const) : ("ai" as const),
+          content: m.content,
+        })),
     [messages],
   );
 
@@ -209,12 +233,10 @@ const ChatPage = () => {
     const prompt = input;
     setInput("");
 
-    // Compress images off the main thread (canvas), then convert to base64
     const rawImages = selectedImages;
     const compressed = await Promise.all(rawImages.map(compressImage));
     const apiImages = await Promise.all(compressed.map(fileToBase64Data));
 
-    // Optimistic chat append: user bubble + image bubbles + loading bubble
     const userMessage: ChatMessage = { id: newId(), role: "user", content: prompt, type: "text" };
     const imageBubbles: ChatMessage[] = apiImages.map((img) => ({
       id: newId(),
@@ -229,9 +251,14 @@ const ChatPage = () => {
       ...prev,
       userMessage,
       ...imageBubbles,
-      { id: loadingId, role: "ai", content: PROGRESS_STAGES[0][1], type: "text" },
+      { id: loadingId, role: "ai", content: PROGRESS_STAGES[0], type: "text" },
     ]);
     setSelectedImages([]);
+
+    // Wire up cancellation
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
 
     try {
       const res = await generate.mutateAsync({
@@ -240,6 +267,7 @@ const ChatPage = () => {
         conversationHistory,
         pendingQuestions,
         images: apiImages,
+        signal: ac.signal,
       });
 
       const draft = res.draft;
@@ -291,19 +319,36 @@ const ChatPage = () => {
         return [...next, ...aiBubbles];
       });
 
-      toast.success("Quote generated!");
+      toast.success("Quote generated");
     } catch (err: any) {
+      if (err?.name === "AbortError" || ac.signal.aborted) {
+        setMessages((prev) => prev.filter((m) => !m.id.endsWith("-ai-loading")));
+        toast.info("Cancelled");
+        return;
+      }
       console.error("Quote generation error:", err);
       toast.error(err?.message ?? "Failed to generate quote");
       setMessages((prev) => {
         const next = prev.filter((m) => !m.id.endsWith("-ai-loading"));
         return [
           ...next,
-          { id: newId(), role: "ai", content: `Error: ${err?.message ?? "Please try again."}`, type: "text" },
+          {
+            id: newId(),
+            role: "ai",
+            content: `Sorry — that didn't work. ${err?.message ?? "Please try again."}`,
+            type: "text",
+          },
         ];
       });
     }
-  }, [input, currentSessionId, selectedImages, conversationHistory, pendingQuestions, isDesktop, user, generate]);
+  }, [
+    input, currentSessionId, selectedImages, conversationHistory, pendingQuestions,
+    isDesktop, user, generate,
+  ]);
+
+  const handleCancelGenerate = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
 
   const handleSaveEdit = useCallback(
     async (id: string) => {
@@ -316,9 +361,18 @@ const ChatPage = () => {
         if (idx === -1) return prev;
         const next = [...prev];
         next[idx] = { ...next[idx], content: newPrompt, isEdited: true };
-        next.push({ id: `${newId()}-ai-loading`, role: "ai", content: "Understood! Updating the quote...", type: "text" });
+        next.push({
+          id: `${newId()}-ai-loading`,
+          role: "ai",
+          content: "Understood! Updating the quote…",
+          type: "text",
+        });
         return next;
       });
+
+      abortRef.current?.abort();
+      const ac = new AbortController();
+      abortRef.current = ac;
 
       try {
         const res = await generate.mutateAsync({
@@ -326,6 +380,7 @@ const ChatPage = () => {
           sessionId: currentSessionId,
           conversationHistory,
           pendingQuestions,
+          signal: ac.signal,
         });
 
         const draft = res.draft;
@@ -353,12 +408,16 @@ const ChatPage = () => {
           const next = prev.filter((m) => !m.id.endsWith("-ai-loading"));
           return [
             ...next,
-            { id: newId(), role: "ai", content: "I've updated the quote based on your new instructions.", type: "text" },
+            { id: newId(), role: "ai", content: "Updated based on your new instructions.", type: "text" },
             { id: newId(), role: "ai", content: "", type: "quote" },
           ];
         });
-        toast.success("Quote updated!");
+        toast.success("Quote updated");
       } catch (err: any) {
+        if (err?.name === "AbortError" || ac.signal.aborted) {
+          setMessages((prev) => prev.filter((m) => !m.id.endsWith("-ai-loading")));
+          return;
+        }
         toast.error(err?.message ?? "Failed to update quote");
         setMessages((prev) => prev.filter((m) => !m.id.endsWith("-ai-loading")));
       }
@@ -367,17 +426,26 @@ const ChatPage = () => {
   );
 
   const startNewChat = useCallback(() => {
+    abortRef.current?.abort();
     setMessages(initialMessages);
     setActiveQuote(null);
     setQuoteHistory([]);
     setCurrentSessionId(null);
     setPendingQuestions([]);
+    setDrawerOpen(false);
   }, []);
 
-  const startEditing = (msg: ChatMessage) => {
+  const startEditing = useCallback((msg: ChatMessage) => {
     setEditingMessageId(msg.id);
     setEditContent(msg.content);
-  };
+  }, []);
+
+  const cancelEditing = useCallback(() => setEditingMessageId(null), []);
+
+  const onSwitchSession = useCallback((id: string) => {
+    abortRef.current?.abort();
+    setCurrentSessionId(id);
+  }, []);
 
   const handleFileSelect: React.ChangeEventHandler<HTMLInputElement> = (e) => {
     const files = Array.from(e.target.files ?? []);
@@ -385,10 +453,26 @@ const ChatPage = () => {
     e.target.value = "";
   };
 
-  const removeImage = (idx: number) =>
-    setSelectedImages((prev) => prev.filter((_, i) => i !== idx));
+  const removeImage = useCallback(
+    (idx: number) => setSelectedImages((prev) => prev.filter((_, i) => i !== idx)),
+    [],
+  );
 
-  // ─── Render ──────────────────────────────────────────────────────────────
+  // Memoised quote slot — referenced by mobile quote bubbles; recomputed only
+  // when the active quote identity changes, so MessageBubble's quoteSlot prop
+  // stays stable for non-quote bubbles.
+  const quoteSlot = useMemo<React.ReactNode>(() => {
+    if (!activeQuote) {
+      return (
+        <div className="text-sm bg-destructive/10 text-destructive p-4 rounded-2xl border border-destructive/20">
+          Quote data unavailable.
+        </div>
+      );
+    }
+    return <QuoteCard quote={activeQuote} onQuoteSaved={(saved) => setActiveQuote(saved)} mode="chat" />;
+  }, [activeQuote]);
+
+  // ─── Render: chat surface ────────────────────────────────────────────────
   const ChatContent = (
     <div className="flex flex-col h-full bg-background relative overscroll-none">
       {!isDesktop && (
@@ -397,17 +481,19 @@ const ChatPage = () => {
           onClose={() => setDrawerOpen(false)}
           sessions={sessionsList ?? []}
           isLoading={isLoadingSessions}
-          onSelectSession={setCurrentSessionId}
+          onSelectSession={onSwitchSession}
           onNewChat={startNewChat}
         />
       )}
 
+      {/* ── Mobile top bar ──────────────────────────────────────── */}
       {!isDesktop && (
         <div className="flex items-center justify-between px-4 h-14 bg-white border-b border-gray-100 shrink-0 shadow-sm lg:hidden">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setDrawerOpen(true)}
-              className="w-9 h-9 flex items-center justify-center rounded-xl text-gray-500 hover:bg-gray-100 active:bg-gray-200 transition-colors"
+              className="w-11 h-11 -ml-2 flex items-center justify-center rounded-xl text-gray-600 hover:bg-gray-100 active:bg-gray-200 transition-colors"
+              aria-label="Open chat history"
             >
               <Menu size={20} />
             </button>
@@ -420,8 +506,9 @@ const ChatPage = () => {
           </div>
           <button
             onClick={startNewChat}
-            className="w-9 h-9 flex items-center justify-center rounded-xl text-[#0056D2] hover:bg-blue-50 active:bg-blue-100 transition-colors"
+            className="w-11 h-11 -mr-2 flex items-center justify-center rounded-xl text-[#0056D2] hover:bg-blue-50 active:bg-blue-100 transition-colors"
             title="New chat"
+            aria-label="Start new chat"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 5v14M5 12h14" />
@@ -430,96 +517,36 @@ const ChatPage = () => {
         </div>
       )}
 
+      {/* ── Chat body ───────────────────────────────────────────── */}
       <div
         ref={scrollRef}
         className="flex-1 overflow-y-auto overscroll-contain bg-[#f0f2f5] px-3 py-4 space-y-3"
         style={{ WebkitOverflowScrolling: "touch" }}
       >
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`flex items-end gap-2 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-          >
-            {msg.role === "ai" && msg.type !== "quote" && (
-              <div className="w-7 h-7 rounded-full bg-[#0056D2] flex items-center justify-center shrink-0 mb-0.5 shadow-sm">
-                <span className="text-white text-[9px] font-black">OQ</span>
-              </div>
-            )}
-            {msg.role === "ai" && msg.type === "quote" && !isDesktop && <div className="w-7 shrink-0" />}
-
-            {msg.type === "image" ? (
-              <div className="max-w-[65%]">
-                <img src={msg.imageUrl} alt="Uploaded" className="rounded-2xl border border-white/50 shadow-md max-h-[260px] w-full object-cover" />
-              </div>
-            ) : msg.type === "quote" && !isDesktop ? (
-              <div className="flex-1 min-w-0">
-                {activeQuote ? (
-                  <QuoteCard quote={activeQuote} onQuoteSaved={(saved) => setActiveQuote(saved)} mode="chat" />
-                ) : (
-                  <div className="text-sm bg-destructive/10 text-destructive p-4 rounded-2xl border border-destructive/20">
-                    Quote data unavailable.
-                  </div>
-                )}
-              </div>
-            ) : msg.type === "quote" && isDesktop ? (
-              <div className="max-w-[75%] px-4 py-3 rounded-2xl rounded-bl-sm text-[14px] bg-white text-gray-700 shadow-sm border border-gray-100">
-                Quote generated and updated in the preview panel. 👉
-              </div>
-            ) : msg.id.endsWith("-ai-loading") ? (
-              <div className="px-4 py-3 bg-white rounded-2xl rounded-bl-sm shadow-sm border border-gray-100">
-                <div className="flex items-center gap-2 h-5">
-                  <span className="w-2 h-2 rounded-full bg-gray-400 animate-bounce [animation-delay:0ms]" />
-                  <span className="w-2 h-2 rounded-full bg-gray-400 animate-bounce [animation-delay:150ms]" />
-                  <span className="w-2 h-2 rounded-full bg-gray-400 animate-bounce [animation-delay:300ms]" />
-                  <span className="text-[11px] text-gray-500 ml-1">{progressLabel}</span>
-                </div>
-              </div>
-            ) : (
-              <div
-                className={`max-w-[78%] rounded-2xl text-[14px] leading-relaxed relative ${
-                  msg.role === "user"
-                    ? "bg-[#0056D2] text-white shadow-sm rounded-br-sm px-4 py-3"
-                    : "bg-white text-gray-800 shadow-sm border border-gray-100 rounded-bl-sm px-4 py-3"
-                }`}
-              >
-                {editingMessageId === msg.id ? (
-                  <div className="flex flex-col gap-2 min-w-[220px]">
-                    <textarea
-                      value={editContent}
-                      onChange={(e) => setEditContent(e.target.value)}
-                      className="w-full bg-white/15 text-white p-2 rounded-xl resize-none outline-none border border-white/25 focus:border-white/60 text-sm min-h-[80px]"
-                      autoFocus
-                    />
-                    <div className="flex justify-end gap-2">
-                      <button onClick={() => setEditingMessageId(null)} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white transition-colors">
-                        Cancel
-                      </button>
-                      <button onClick={() => handleSaveEdit(msg.id)} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-white text-[#0056D2] hover:bg-gray-50 transition-colors">
-                        Update
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <p className="whitespace-pre-wrap">{msg.content}</p>
-                    {msg.role === "user" && !generate.isPending && (
-                      <div className="flex items-center justify-end gap-2 mt-1.5">
-                        {msg.isEdited && <span className="text-[10px] text-white/60">edited</span>}
-                        <button onClick={() => startEditing(msg)} className="flex items-center gap-1 text-white/60 hover:text-white/90 transition-colors" title="Edit message">
-                          <Pencil size={11} />
-                          <span className="text-[10px]">Edit</span>
-                        </button>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        ))}
+        {showChatSkeleton ? (
+          <ChatSkeleton />
+        ) : (
+          messages.map((msg) => (
+            <MessageBubble
+              key={msg.id}
+              msg={msg}
+              isDesktop={isDesktop}
+              canEdit={!generate.isPending}
+              editing={editingMessageId === msg.id}
+              editValue={editContent}
+              setEditValue={setEditContent}
+              onStartEdit={startEditing}
+              onCancelEdit={cancelEditing}
+              onSubmitEdit={handleSaveEdit}
+              progressLabel={progressLabel}
+              quoteSlot={quoteSlot}
+            />
+          ))
+        )}
         <div className="h-2" />
       </div>
 
+      {/* ── Input bar ───────────────────────────────────────────── */}
       <div
         className="px-3 pt-3 bg-white border-t border-gray-100 shrink-0"
         style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom, 0px))" }}
@@ -528,12 +555,19 @@ const ChatPage = () => {
           <div className="flex gap-2 flex-wrap mb-2 px-1">
             {imagePreviews.map((url, idx) => (
               <div key={url} className="relative">
-                <img src={url} alt={`Upload ${idx + 1}`} className="w-14 h-14 object-cover rounded-xl border border-gray-200 shadow-sm" />
+                <img
+                  src={url}
+                  alt={`Upload ${idx + 1}`}
+                  className="w-14 h-14 object-cover rounded-xl border border-gray-200 shadow-sm"
+                  loading="lazy"
+                  decoding="async"
+                />
                 <button
                   onClick={() => removeImage(idx)}
-                  className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center shadow-sm"
+                  className="absolute -top-1.5 -right-1.5 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center shadow-sm"
+                  aria-label="Remove image"
                 >
-                  <X size={11} strokeWidth={3} />
+                  <X size={12} strokeWidth={3} />
                 </button>
               </div>
             ))}
@@ -541,13 +575,22 @@ const ChatPage = () => {
         )}
 
         <div className="flex items-end gap-2">
+          {/* Attach */}
           <div className="relative shrink-0">
-            <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleFileSelect} className="hidden" />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={handleFileSelect}
+              className="hidden"
+            />
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={generate.isPending}
-              className="w-10 h-10 flex items-center justify-center rounded-2xl bg-gray-100 text-gray-500 active:bg-gray-200 transition-colors disabled:opacity-40"
+              className="w-11 h-11 flex items-center justify-center rounded-2xl bg-gray-100 text-gray-600 hover:bg-gray-200 active:bg-gray-300 transition-colors disabled:opacity-40"
               title="Attach image"
+              aria-label="Attach image"
             >
               <Image size={19} />
               {selectedImages.length > 0 && (
@@ -558,6 +601,7 @@ const ChatPage = () => {
             </button>
           </div>
 
+          {/* Composer */}
           <div className="flex-1 flex items-end bg-gray-100 rounded-[22px] px-4 py-2 border border-transparent focus-within:border-[#0056D2]/30 focus-within:bg-white transition-all duration-200">
             <textarea
               value={input}
@@ -568,7 +612,7 @@ const ChatPage = () => {
                   handleSend();
                 }
               }}
-              placeholder="Type your job description..."
+              placeholder="Describe the job…"
               className="flex-1 bg-transparent text-gray-900 placeholder:text-gray-400 outline-none resize-none"
               disabled={generate.isPending}
               rows={1}
@@ -582,19 +626,33 @@ const ChatPage = () => {
             />
           </div>
 
-          {input.trim() || generate.isPending ? (
+          {/* Send / Cancel / Mic */}
+          {generate.isPending ? (
+            <button
+              onClick={handleCancelGenerate}
+              className="w-11 h-11 shrink-0 flex items-center justify-center bg-destructive/10 text-destructive rounded-full shadow-sm hover:bg-destructive/20 active:scale-95 transition-all"
+              title="Cancel"
+              aria-label="Cancel generation"
+            >
+              <StopCircle size={20} />
+            </button>
+          ) : input.trim() ? (
             <button
               onClick={handleSend}
-              disabled={generate.isPending}
-              className="w-10 h-10 shrink-0 flex items-center justify-center bg-[#0056D2] text-white rounded-full shadow-md active:scale-95 transition-all disabled:opacity-60"
+              className="w-11 h-11 shrink-0 flex items-center justify-center bg-[#0056D2] text-white rounded-full shadow-md hover:bg-[#0056D2]/90 active:scale-95 transition-all"
+              aria-label="Send message"
             >
-              {generate.isPending ? <Loader2 size={17} className="animate-spin" /> : <Send size={17} className="ml-0.5" />}
+              <Send size={17} className="ml-0.5" />
             </button>
           ) : (
             <button
-              onClick={() => toast.info("Voice input coming soon!", { description: "Please type your message for now." })}
-              disabled={generate.isPending}
-              className="w-10 h-10 shrink-0 flex items-center justify-center bg-gray-100 text-gray-500 rounded-full active:bg-gray-200 transition-colors"
+              onClick={() =>
+                toast.info("Voice input coming soon!", {
+                  description: "Type your message for now.",
+                })
+              }
+              className="w-11 h-11 shrink-0 flex items-center justify-center bg-gray-100 text-gray-600 rounded-full hover:bg-gray-200 active:bg-gray-300 transition-colors"
+              aria-label="Voice input"
             >
               <Mic size={19} />
             </button>
@@ -613,7 +671,7 @@ const ChatPage = () => {
           variant="sidebar"
           sessions={sessionsList ?? []}
           isLoading={isLoadingSessions}
-          onSelectSession={setCurrentSessionId}
+          onSelectSession={onSwitchSession}
           onNewChat={startNewChat}
         />
       </Panel>
@@ -637,13 +695,13 @@ const ChatPage = () => {
                 <button
                   key={quote.id}
                   onClick={() => setActiveQuote(quote)}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
+                  className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all min-h-[36px] ${
                     activeQuote?.id === quote.id
                       ? "bg-blue-50 text-[#0056D2] shadow-sm border border-blue-100"
                       : "bg-white text-gray-600 hover:bg-gray-50 border border-gray-200"
                   }`}
                 >
-                  Quote {index + 1} - {quote.ref}
+                  Quote {index + 1} • {quote.ref}
                 </button>
               ))}
             </div>
@@ -670,8 +728,10 @@ const ChatPage = () => {
                   <div className="w-20 h-20 bg-gradient-to-tr from-blue-50 to-indigo-50 text-[#0056D2] rounded-3xl flex items-center justify-center mb-8 shadow-inner ring-1 ring-blue-100/50 transform -rotate-3 transition-transform hover:rotate-0 duration-300">
                     <Menu className="w-10 h-10" strokeWidth={1.5} />
                   </div>
-                  <h3 className="text-[22px] font-semibold mb-3 text-gray-900 tracking-tight">No Quote Generated</h3>
-                  <p className="text-gray-500 text-[15px] leading-relaxed mb-8">
+                  <h3 className="text-[22px] font-semibold mb-3 text-gray-900 tracking-tight">
+                    No quote yet
+                  </h3>
+                  <p className="text-gray-500 text-[15px] leading-relaxed">
                     Start a conversation to generate your first professional quotation with AI.
                   </p>
                 </div>
