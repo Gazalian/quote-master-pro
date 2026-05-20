@@ -210,6 +210,7 @@ const ChatPage = () => {
   }, [generate.isPending]);
 
   const progressLabel = PROGRESS_STAGES[progressStage];
+  const canSend = input.trim().length > 0 || selectedImages.length > 0;
 
   const conversationHistory = useMemo(
     () =>
@@ -224,7 +225,7 @@ const ChatPage = () => {
 
   // ─── Generate ─────────────────────────────────────────────────────────────
   const handleSend = useCallback(async () => {
-    if (!input.trim() || generate.isPending) return;
+    if ((!input.trim() && selectedImages.length === 0) || generate.isPending) return;
 
     let sessionId = currentSessionId;
     if (!sessionId) {
@@ -232,7 +233,7 @@ const ChatPage = () => {
       setCurrentSessionId(sessionId);
     }
 
-    const prompt = input;
+    const prompt = input.trim() || "Please generate a quotation from the attached image(s).";
     setInput("");
 
     // ── Image pipeline ──────────────────────────────────────────────────────
@@ -389,7 +390,7 @@ const ChatPage = () => {
     }
   }, [
     input, currentSessionId, selectedImages, conversationHistory, pendingQuestions,
-    isDesktop, user, generate,
+    isDesktop, user, generate, uploadImage,
   ]);
 
   const handleCancelGenerate = useCallback(() => {
@@ -682,7 +683,7 @@ const ChatPage = () => {
             >
               <StopCircle size={20} />
             </button>
-          ) : input.trim() ? (
+          ) : canSend ? (
             <button
               onClick={handleSend}
               className="w-11 h-11 shrink-0 flex items-center justify-center bg-[#0056D2] text-white rounded-full shadow-md hover:bg-[#0056D2]/90 active:scale-95 transition-all"

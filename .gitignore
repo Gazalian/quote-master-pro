@@ -38,3 +38,10 @@ backend/node_modules
 backend/.env
 backend/.env.*
 !backend/.env.example
+
+# Frontend
+frontend/dist
+frontend/node_modules
+frontend/.env
+frontend/.env.*
+!frontend/.env.local.example

@@ -44,4 +44,10 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  // @react-pdf/renderer ships ESM + CJS internals — Vite's dep pre-bundler
+  // sometimes mishandles it on first import. Forcing inclusion here makes
+  // dynamic-import('@/lib/pdf') reliable.
+  optimizeDeps: {
+    include: ["@react-pdf/renderer"],
+  },
 }));

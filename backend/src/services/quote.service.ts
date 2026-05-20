@@ -7,7 +7,7 @@
 import { supabaseService, supabaseForUser } from '../config/supabase.js';
 import { ApiError } from '../middleware/error.js';
 import { invalidateUserBootstrap } from './user.service.js';
-import { env } from '../config/env.js';
+import { effectiveQuoteGenerationCost } from '../config/featureFlags.js';
 import type { QuoteDraft } from '../types/domain.js';
 
 export interface SaveQuoteInput {
@@ -28,7 +28,9 @@ export async function saveQuoteWithPoints(jwt: string, userId: string, input: Sa
     p_template_style: input.templateStyle ?? input.draft.templateStyle ?? 'modern',
     p_grand_total: input.draft.grandTotal,
     p_data: { groups: input.draft.groups },
-    p_points_cost: env.QUOTE_GENERATION_POINTS_COST,
+    // Honour the POINTS_ENABLED feature flag — when off, cost is forced to 0
+    // and the DB function short-circuits the deduction path entirely.
+    p_points_cost: effectiveQuoteGenerationCost(),
   });
 
   if (error) {

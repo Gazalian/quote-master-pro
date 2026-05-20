@@ -25,6 +25,7 @@ export const loggerOptions: LoggerOptions = {
             '*.password',
             '*.token',
             'GEMINI_API_KEY',
+            'OPENAI_API_KEY',
             'SUPABASE_SERVICE_ROLE_KEY',
           ],
           censor: '[REDACTED]',

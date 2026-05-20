@@ -10,9 +10,9 @@ import { toast } from "sonner";
 import { useBootstrap } from "@/hooks/useBootstrap";
 import { useSaveQuote, useUpdateQuote } from "@/hooks/useQuotes";
 
-// Lazy-loaded so html2canvas + jspdf (~700 KB) don't ship in the main bundle —
-// they're only fetched when the user actually clicks Export PDF.
-const loadPdfExport = () => import("@/lib/pdfExport").then((m) => m.exportToPDF);
+// Lazy-loaded so the PDF renderer (~400 KB gzipped) only ships when the user
+// actually clicks Export PDF — keeps the main bundle lean for chat-only sessions.
+const loadPdfExport = () => import("@/lib/pdf").then((m) => m.exportQuoteAsPDF);
 
 export const QuoteCard = ({ quote, onQuoteSaved, mode = "dashboard" }: { quote: Quote, onQuoteSaved?: (quote: Quote) => void, mode?: "chat" | "dashboard" }) => {
   const { user } = useAuth();
@@ -126,17 +126,17 @@ export const QuoteCard = ({ quote, onQuoteSaved, mode = "dashboard" }: { quote: 
   };
 
   const handleExportPDF = async () => {
+    if (!brand) {
+      toast.error("Brand settings still loading — try again in a moment");
+      return;
+    }
     try {
       setIsExportingPDF(true);
       toast.loading("Generating PDF...");
 
-      // Wait a bit for toast to show
-      await new Promise(resolve => setTimeout(resolve, 300));
-
-      // Lazy import: fetch the PDF dep bundle only on first export
-      const exportToPDF = await loadPdfExport();
-      const elementId = `quote-template-${currentQuote.id}`;
-      await exportToPDF(elementId, currentQuote);
+      // Lazy import: fetch the @react-pdf/renderer bundle only on first export
+      const exportQuoteAsPDF = await loadPdfExport();
+      await exportQuoteAsPDF(currentQuote, brand);
 
       toast.dismiss();
       toast.success("PDF downloaded successfully!");

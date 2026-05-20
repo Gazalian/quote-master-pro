@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth } from '../middleware/auth.js';
-import { generateQuote } from '../services/gemini.service.js';
+import { generateQuote } from '../services/ai/index.js';
 import {
   saveQuoteWithPoints,
   listQuotations,
@@ -51,7 +51,7 @@ const updateBody = z
 
 export async function quoteRoutes(app: FastifyInstance): Promise<void> {
   // ── Generate ───────────────────────────────────────────────────────────────
-  // Throttled separately because Gemini quota is the real bottleneck.
+  // Throttled separately because AI generation is the most expensive path.
   app.post(
     '/api/quotes/generate',
     {

@@ -5,6 +5,7 @@ import rateLimit from '@fastify/rate-limit';
 import sensible from '@fastify/sensible';
 
 import { env, corsOrigins } from './config/env.js';
+import { effectiveQuoteGenRateLimit, features } from './config/featureFlags.js';
 import { loggerOptions } from './utils/logger.js';
 import { registerErrorHandler } from './middleware/error.js';
 import { healthRoutes } from './routes/health.js';
@@ -35,7 +36,21 @@ async function buildApp(): Promise<FastifyInstance> {
   });
 
   // Decorate config so routes can read tunable values without re-importing env.
-  app.decorate('config', { rateLimitQuoteGenPerMin: env.RATE_LIMIT_QUOTE_GEN_PER_MIN });
+  // The effective rate limit respects USAGE_LIMITS_ENABLED — when off, it stays
+  // high enough to act only as a DoS guard, not a paywall.
+  app.decorate('config', { rateLimitQuoteGenPerMin: effectiveQuoteGenRateLimit() });
+  app.log.info(
+    {
+      features: {
+        billing: features.billing.enabled,
+        points: features.points.enabled,
+        premium: features.premium.enabled,
+        usageLimits: features.usageLimits.enabled,
+      },
+      quoteGenLimitPerMin: effectiveQuoteGenRateLimit(),
+    },
+    'Monetization toggles resolved',
+  );
 
   await app.register(helmet, {
     contentSecurityPolicy: false, // SPA loads from a different origin; CSP belongs on the frontend host

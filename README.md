@@ -55,13 +55,14 @@ brand, export, and convert to an invoice.
 
 ```bash
 # 1. Frontend
+cd frontend
 cp .env.local.example .env.local
 #   fill VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY, VITE_API_BASE_URL
 npm install
 npm run dev                 # http://localhost:8080
 
 # 2. Backend (separate terminal)
-cd backend
+cd ../backend
 cp .env.example .env
 #   fill SUPABASE_*, GEMINI_API_KEY, etc.
 npm install
@@ -106,16 +107,16 @@ Key DB objects added in this refactor:
 
 | Command               | What it does |
 | --------------------- | ------------ |
-| `npm run dev`         | Vite dev server (frontend) |
-| `npm run build`       | Production build of frontend |
-| `npm run test`        | Run Vitest tests |
+| `cd frontend && npm run dev`   | Vite dev server (frontend) |
+| `cd frontend && npm run build` | Production build of frontend |
+| `cd frontend && npm run test`  | Run Vitest tests |
 | `cd backend && npm run dev`  | Fastify dev server with tsx watch |
 | `cd backend && npm run build` | Compile TS → JS in `backend/dist/` |
 | `cd backend && npm start`     | Run compiled backend |
 
 ## Deployment
 
-- **Frontend**: any static host (Vercel set up in `vercel.json`)
+- **Frontend**: any static host (Vercel config lives in `frontend/vercel.json`)
 - **Backend**: any Node 20 host (Render / Fly / Railway / Fargate)
 - **Database**: Supabase managed Postgres
 - **Cron**: Supabase Edge Function `recalculate-regional-prices` runs daily

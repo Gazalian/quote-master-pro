@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import PWAInstallPrompt from '@/components/PWAInstallPrompt';
+import { features } from '@/lib/featureFlags';
 import {
   MessageSquare,
   Camera,
@@ -483,7 +484,11 @@ const LandingPage = () => {
         </div>
       </section>
 
-      {/* Pricing & Points System */}
+      {/* Pricing & Points System — only rendered when billing is enabled.
+          Default posture is the free-tier section below. The full pricing
+          tree is preserved so flipping VITE_BILLING_ENABLED=true brings it
+          back without a code change. */}
+      {features.billing.enabled && (
       <section id="pricing" className="py-12 sm:py-16 lg:py-24 bg-white">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12 lg:mb-16 space-y-4">
@@ -648,6 +653,49 @@ const LandingPage = () => {
           </div>
         </div>
       </section>
+      )}
+      {!features.billing.enabled && (
+      <section id="pricing" className="py-12 sm:py-16 lg:py-24 bg-white">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="max-w-3xl mx-auto text-center space-y-6">
+            <Badge className="bg-[#009A44] text-white px-3 py-1 text-xs font-semibold tracking-wide uppercase">
+              Free for everyone
+            </Badge>
+            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-[#0056D2]">
+              Completely free. No catch.
+            </h2>
+            <p className="text-base sm:text-lg text-gray-600">
+              Every feature is unlocked — unlimited AI-generated quotes, PDF exports,
+              branded invoices, voice notes, photo analysis, price logs, and chat history.
+              No credit card. No usage caps. No paywalled templates.
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2 max-w-2xl mx-auto pt-4 text-left">
+              {[
+                'Unlimited AI quote generations',
+                'Unlimited PDF & invoice exports',
+                'All templates, colors, and branding',
+                'Personal price log + regional pricing',
+                'Voice notes & photo analysis',
+                'Full chat history with image uploads',
+              ].map((feat) => (
+                <div key={feat} className="flex items-start gap-2.5">
+                  <CheckCircle2 className="text-[#009A44] flex-shrink-0 mt-0.5" size={18} />
+                  <span className="text-sm text-gray-700">{feat}</span>
+                </div>
+              ))}
+            </div>
+            <div className="pt-4">
+              <Button
+                className="bg-[#F58220] hover:bg-[#F58220]/90 text-white font-semibold px-8 py-6 text-base shadow-md"
+                onClick={() => navigate('/auth')}
+              >
+                Start using OtoQuote — Free
+              </Button>
+            </div>
+          </div>
+        </div>
+      </section>
+      )}
 
       {/* Trust & Social Proof */}
       <section className="py-12 sm:py-16 lg:py-20 bg-gray-50 border-y border-gray-100">
