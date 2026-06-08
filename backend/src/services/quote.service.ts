@@ -67,12 +67,24 @@ export async function getQuotation(jwt: string, id: string) {
 
 export async function updateQuotation(jwt: string, id: string, patch: Record<string, unknown>) {
   const userClient = supabaseForUser(jwt);
-  const { error } = await userClient.from('quotations').update(patch).eq('id', id);
+  const { data, error } = await userClient
+    .from('quotations')
+    .update(patch)
+    .eq('id', id)
+    .select('id')
+    .maybeSingle();
   if (error) throw new ApiError(500, `update quote failed: ${error.message}`);
+  if (!data) throw new ApiError(404, 'Quotation not found');
 }
 
 export async function deleteQuotation(jwt: string, id: string) {
   const userClient = supabaseForUser(jwt);
-  const { error } = await userClient.from('quotations').delete().eq('id', id);
+  const { data, error } = await userClient
+    .from('quotations')
+    .delete()
+    .eq('id', id)
+    .select('id')
+    .maybeSingle();
   if (error) throw new ApiError(500, `delete quote failed: ${error.message}`);
+  if (!data) throw new ApiError(404, 'Quotation not found');
 }

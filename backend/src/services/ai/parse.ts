@@ -5,12 +5,38 @@
 
 import { ApiError } from '../../middleware/error.js';
 import { logger } from '../../utils/logger.js';
-import type { PriceSource, QuoteDraft, QuoteGroup } from '../../types/domain.js';
+import type { PriceSource, QuoteContext, QuoteDraft, QuoteGroup } from '../../types/domain.js';
 
-export function parseQuoteDraft(raw: string): QuoteDraft {
-  let parsed: any;
+interface RawQuoteItem {
+  name?: unknown;
+  quantity?: unknown;
+  unit?: unknown;
+  unitPrice?: unknown;
+  source?: unknown;
+  regionName?: unknown;
+}
+
+interface RawQuoteCategory {
+  name?: unknown;
+  items?: RawQuoteItem[];
+}
+
+interface RawQuoteResponse {
+  clientName?: unknown;
+  projectTitle?: unknown;
+  categories?: RawQuoteCategory[];
+  reasoning?: string;
+  confidence?: 'high' | 'medium' | 'low';
+  clarifyingQuestions?: string[];
+}
+
+export function parseQuoteDraft(
+  raw: string,
+  opts: { currentQuote?: QuoteContext | null } = {},
+): QuoteDraft {
+  let parsed: RawQuoteResponse;
   try {
-    parsed = JSON.parse(raw);
+    parsed = JSON.parse(raw) as RawQuoteResponse;
   } catch {
     logger.warn({ rawPreview: raw.slice(0, 200) }, 'AI returned non-JSON despite structured schema');
     throw new ApiError(502, 'AI returned malformed response');
@@ -22,13 +48,13 @@ export function parseQuoteDraft(raw: string): QuoteDraft {
   }
 
   const groups: QuoteGroup[] = parsed.categories
-    .filter((c: any) => c && Array.isArray(c.items) && c.items.length > 0)
-    .map((c: any, gi: number) => ({
+    .filter((c): c is RawQuoteCategory & { items: RawQuoteItem[] } => !!c && Array.isArray(c.items) && c.items.length > 0)
+    .map((c, gi: number) => ({
       id: `g-${gi}-${cryptoRandom()}`,
-      name: c.name || 'Materials',
+      name: stringOrDefault(c.name, 'Materials'),
       items: c.items
-        .filter((it: any) => it && it.name)
-        .map((it: any, ii: number) => {
+        .filter((it): it is RawQuoteItem & { name: unknown } => !!it && !!it.name)
+        .map((it, ii: number) => {
           const qty = positiveNumber(it.quantity, 1);
           const unitPrice = positiveNumber(it.unitPrice, 0);
           const source = normaliseSource(it.source);
@@ -36,11 +62,11 @@ export function parseQuoteDraft(raw: string): QuoteDraft {
             id: `i-${gi}-${ii}-${cryptoRandom()}`,
             name: String(it.name),
             qty,
-            unit: it.unit || 'unit',
+            unit: stringOrDefault(it.unit, 'unit'),
             unitPrice,
             total: roundMoney(qty * unitPrice),
             source,
-            ...(source === 'regional_price' && it.regionName ? { regionName: it.regionName } : {}),
+            ...(source === 'regional_price' && it.regionName ? { regionName: String(it.regionName) } : {}),
           };
         }),
     }));
@@ -56,18 +82,26 @@ export function parseQuoteDraft(raw: string): QuoteDraft {
   }
 
   return {
-    ref: `OQ-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)
-      .toString()
-      .padStart(4, '0')}`,
-    client: parsed.clientName || 'Client Name',
-    description: parsed.projectTitle || 'AI Generated Quotation',
+    ref: opts.currentQuote?.ref ?? newQuoteRef(),
+    client: stringOrDefault(parsed.clientName, opts.currentQuote?.client || 'Client Name'),
+    description: stringOrDefault(parsed.projectTitle, 'AI Generated Quotation'),
     groups,
     grandTotal: roundMoney(calcTotal),
-    templateStyle: 'modern',
+    templateStyle: opts.currentQuote?.templateStyle ?? 'modern',
     reasoning: parsed.reasoning,
     confidence: parsed.confidence,
     clarifyingQuestions: parsed.clarifyingQuestions ?? [],
   };
+}
+
+function stringOrDefault(value: unknown, fallback: string): string {
+  return typeof value === 'string' && value.trim() ? value : fallback;
+}
+
+function newQuoteRef(): string {
+  return `OQ-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)
+    .toString()
+    .padStart(4, '0')}`;
 }
 
 function positiveNumber(value: unknown, fallback: number): number {

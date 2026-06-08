@@ -10,6 +10,8 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { envConfigured } from "@/lib/supabase";
 import { EnvMissingScreen } from "@/components/EnvMissingScreen";
 
+type RetryableError = { status?: number };
+
 // Route-level code splitting. Landing page no longer pulls jspdf / dnd-kit /
 // the chat page into its bundle.
 const LandingPage   = lazy(() => import("@/pages/LandingPage"));
@@ -25,9 +27,10 @@ const queryClient = new QueryClient({
     queries: {
       // Refetch strategy: lean on staleTime, not refetchOnWindowFocus.
       refetchOnWindowFocus: false,
-      retry: (failureCount, err: any) => {
+      retry: (failureCount, err: unknown) => {
         // Don't retry 4xx — they won't get better.
-        if (err?.status >= 400 && err?.status < 500) return false;
+        const status = (err as RetryableError | undefined)?.status;
+        if (status && status >= 400 && status < 500) return false;
         return failureCount < 2;
       },
       staleTime: 30_000,
@@ -36,7 +39,7 @@ const queryClient = new QueryClient({
 });
 
 const Loader = () => (
-  <div className="min-h-screen flex items-center justify-center bg-background">
+  <div className="min-h-app flex items-center justify-center bg-background">
     <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
   </div>
 );

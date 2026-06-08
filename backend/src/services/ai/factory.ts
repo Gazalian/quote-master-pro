@@ -27,8 +27,13 @@ let testOverride: AIProvider[] | null = null;
 export function getProviderChain(): AIProvider[] {
   if (testOverride) return testOverride;
   if (cachedChain) return cachedChain;
-  // The env superRefine guarantees PRIMARY !== FALLBACK and both keys exist.
-  cachedChain = [build(env.AI_PROVIDER_PRIMARY), build(env.AI_PROVIDER_FALLBACK)];
+  // OtoQuote uses OpenAI as the preferred provider whenever both configured
+  // providers are available, with Gemini as the fallback.
+  const names: ProviderName[] =
+    new Set([env.AI_PROVIDER_PRIMARY, env.AI_PROVIDER_FALLBACK]).has('openai')
+      ? ['openai', 'gemini']
+      : [env.AI_PROVIDER_PRIMARY, env.AI_PROVIDER_FALLBACK];
+  cachedChain = names.map(build);
   return cachedChain;
 }
 

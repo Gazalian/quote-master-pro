@@ -12,6 +12,8 @@ import { ApiError } from '../middleware/error.js';
 
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 
+type MultipartFieldWithValue = { value?: unknown };
+
 // ── JSON variant: { mimeType, dataBase64, sessionId? } ───────────────────────
 // Used by the chat composer which already runs compression in a canvas and
 // has the base64 bytes in hand. One extra round-trip avoided vs. multipart.
@@ -56,10 +58,8 @@ export async function uploadRoutes(app: FastifyInstance): Promise<void> {
     if (part.file.truncated) throw new ApiError(413, 'image too large');
     if (bytes.length === 0) throw new ApiError(400, 'empty upload');
 
-    const sessionIdRaw =
-      typeof (part.fields?.sessionId as any)?.value === 'string'
-        ? (part.fields!.sessionId as any).value
-        : null;
+    const sessionField = part.fields?.sessionId as MultipartFieldWithValue | undefined;
+    const sessionIdRaw = typeof sessionField?.value === 'string' ? sessionField.value : null;
     const sessionId = sessionIdRaw && /^[0-9a-f-]{36}$/i.test(sessionIdRaw) ? sessionIdRaw : null;
 
     return await uploadChatImage({

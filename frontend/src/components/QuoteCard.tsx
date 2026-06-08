@@ -14,6 +14,25 @@ import { useSaveQuote, useUpdateQuote } from "@/hooks/useQuotes";
 // actually clicks Export PDF — keeps the main bundle lean for chat-only sessions.
 const loadPdfExport = () => import("@/lib/pdf").then((m) => m.exportQuoteAsPDF);
 
+type SavedQuoteRow = {
+  id: string;
+  user_id: string;
+  ref: string;
+  client_name: string;
+  description: string;
+  data?: { groups?: Quote["groups"] };
+  grand_total: number | string;
+  status: Quote["status"];
+  template_style: Quote["templateStyle"];
+  version: number;
+  session_id?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+const getErrorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error ? error.message : fallback;
+
 export const QuoteCard = ({ quote, onQuoteSaved, mode = "dashboard" }: { quote: Quote, onQuoteSaved?: (quote: Quote) => void, mode?: "chat" | "dashboard" }) => {
   const { user } = useAuth();
   const [currentQuote, setCurrentQuote] = useState(quote);
@@ -89,7 +108,7 @@ export const QuoteCard = ({ quote, onQuoteSaved, mode = "dashboard" }: { quote: 
     try {
       // One atomic backend call: save + deduct points + version assignment.
       // Replaces the previous client-side dance of insert + broken deduct_points RPC.
-      const saved: any = await saveQuote.mutateAsync({
+      const saved = (await saveQuote.mutateAsync({
         sessionId: currentQuote.session_id ?? null,
         templateStyle: currentQuote.templateStyle,
         draft: {
@@ -100,7 +119,7 @@ export const QuoteCard = ({ quote, onQuoteSaved, mode = "dashboard" }: { quote: 
           grandTotal: currentQuote.grandTotal,
           templateStyle: currentQuote.templateStyle,
         },
-      });
+      })) as SavedQuoteRow;
       const savedQuote: Quote = {
         id: saved.id,
         user_id: saved.user_id,
@@ -108,7 +127,7 @@ export const QuoteCard = ({ quote, onQuoteSaved, mode = "dashboard" }: { quote: 
         date: new Date(saved.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
         client: saved.client_name,
         description: saved.description,
-        groups: (saved.data?.groups ?? []) as any,
+        groups: saved.data?.groups ?? [],
         grandTotal: Number(saved.grand_total),
         status: saved.status,
         templateStyle: saved.template_style,
@@ -120,8 +139,8 @@ export const QuoteCard = ({ quote, onQuoteSaved, mode = "dashboard" }: { quote: 
       setCurrentQuote(savedQuote);
       onQuoteSaved?.(savedQuote);
       toast.success("Quote saved to Quotations!");
-    } catch (e: any) {
-      toast.error("Failed to save: " + (e?.message ?? "Unknown error"));
+    } catch (e: unknown) {
+      toast.error("Failed to save: " + getErrorMessage(e, "Unknown error"));
     }
   };
 
@@ -140,9 +159,9 @@ export const QuoteCard = ({ quote, onQuoteSaved, mode = "dashboard" }: { quote: 
 
       toast.dismiss();
       toast.success("PDF downloaded successfully!");
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast.dismiss();
-      toast.error(error.message || "Failed to export PDF");
+      toast.error(getErrorMessage(error, "Failed to export PDF"));
     } finally {
       setIsExportingPDF(false);
     }
@@ -202,22 +221,22 @@ export const QuoteCard = ({ quote, onQuoteSaved, mode = "dashboard" }: { quote: 
         </div>
 
         {/* Action buttons */}
-        <div className="flex gap-2">
+        <div className="grid grid-cols-[1fr_2fr] gap-2">
           <button
             onClick={() => setEditing(true)}
-            className="flex-1 bg-gray-100 text-gray-700 py-3 rounded-xl text-sm font-semibold active:bg-gray-200 transition-colors"
+            className="min-h-[44px] bg-gray-100 text-gray-700 py-3 rounded-xl text-sm font-semibold active:bg-gray-200 transition-colors"
           >
             Edit
           </button>
           {currentQuote.isDraft ? (
             <button
               onClick={handleSaveDraft}
-              className="flex-[2] bg-primary text-white py-3 rounded-xl text-sm font-semibold active:opacity-90 transition-opacity"
+              className="min-h-[44px] bg-primary text-white py-3 rounded-xl text-sm font-semibold active:opacity-90 transition-opacity"
             >
               Save to Dashboard
             </button>
           ) : (
-            <div className="flex-[2] flex items-center justify-center gap-1.5 py-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm font-bold">
+            <div className="min-h-[44px] flex items-center justify-center gap-1.5 py-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm font-bold">
               ✓ Saved
             </div>
           )}
@@ -267,11 +286,11 @@ export const QuoteCard = ({ quote, onQuoteSaved, mode = "dashboard" }: { quote: 
       {renderTemplate()}
 
       {/* Actions */}
-      <div className="flex gap-2 p-3 bg-card border border-border rounded-xl shadow-sm">
+      <div className="flex flex-wrap gap-2 p-3 bg-card border border-border rounded-xl shadow-sm">
         {currentQuote.isDraft ? (
            <button
              onClick={handleSaveDraft}
-             className="w-full bg-primary text-primary-foreground py-2.5 rounded-lg text-sm font-semibold hover:opacity-90 flex items-center justify-center gap-2"
+             className="min-h-[44px] w-full bg-primary text-primary-foreground py-2.5 rounded-lg text-sm font-semibold hover:opacity-90 flex items-center justify-center gap-2"
            >
               Save to Quotations
            </button>
@@ -279,14 +298,14 @@ export const QuoteCard = ({ quote, onQuoteSaved, mode = "dashboard" }: { quote: 
           <>
             <button
               onClick={() => setEditing(true)}
-              className="flex-1 bg-secondary text-secondary-foreground py-2.5 rounded-lg text-sm font-semibold hover:bg-secondary/80 transition-colors"
+              className="min-h-[44px] flex-1 basis-[9rem] bg-secondary text-secondary-foreground py-2.5 rounded-lg text-sm font-semibold hover:bg-secondary/80 transition-colors"
             >
               Edit Quote
             </button>
             <button
               onClick={handleExportPDF}
               disabled={isExportingPDF}
-              className="flex-1 bg-primary text-primary-foreground py-2.5 rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity flex items-center justify-center gap-2 disabled:opacity-50"
+              className="min-h-[44px] flex-1 basis-[9rem] bg-primary text-primary-foreground py-2.5 rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity flex items-center justify-center gap-2 disabled:opacity-50"
             >
               {isExportingPDF ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
               Export PDF
@@ -297,7 +316,7 @@ export const QuoteCard = ({ quote, onQuoteSaved, mode = "dashboard" }: { quote: 
                 setCurrentQuote({ ...currentQuote, status: "INVOICED" });
                 toast.success("Quote converted to Invoice!");
               }}
-              className="flex-1 bg-doc-primary text-doc-primary-foreground py-2.5 rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity whitespace-nowrap"
+              className="min-h-[44px] flex-1 basis-[10rem] bg-doc-primary text-doc-primary-foreground py-2.5 rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity whitespace-nowrap"
             >
               Generate Invoice
             </button>
@@ -307,7 +326,7 @@ export const QuoteCard = ({ quote, onQuoteSaved, mode = "dashboard" }: { quote: 
             <button
               onClick={handleExportPDF}
               disabled={isExportingPDF}
-              className="flex-1 bg-primary text-primary-foreground py-2.5 rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity flex items-center justify-center gap-2 disabled:opacity-50"
+              className="min-h-[44px] flex-1 basis-[9rem] bg-primary text-primary-foreground py-2.5 rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity flex items-center justify-center gap-2 disabled:opacity-50"
             >
               {isExportingPDF ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
               Download PDF
@@ -318,7 +337,7 @@ export const QuoteCard = ({ quote, onQuoteSaved, mode = "dashboard" }: { quote: 
                 setCurrentQuote({ ...currentQuote, status: "ARCHIVED" });
                 toast.success("Invoice marked as paid!");
               }}
-              className="flex-1 bg-badge-approved text-badge-approved-fg py-2.5 rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity"
+              className="min-h-[44px] flex-1 basis-[9rem] bg-badge-approved text-badge-approved-fg py-2.5 rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity"
             >
               Mark Paid
             </button>
@@ -327,7 +346,7 @@ export const QuoteCard = ({ quote, onQuoteSaved, mode = "dashboard" }: { quote: 
           <button
             onClick={handleExportPDF}
             disabled={isExportingPDF}
-            className="w-full bg-secondary text-secondary-foreground py-2.5 rounded-lg text-sm font-semibold hover:bg-secondary/80 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+            className="min-h-[44px] w-full bg-secondary text-secondary-foreground py-2.5 rounded-lg text-sm font-semibold hover:bg-secondary/80 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
           >
             {isExportingPDF ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
             View Archived PDF
@@ -337,4 +356,3 @@ export const QuoteCard = ({ quote, onQuoteSaved, mode = "dashboard" }: { quote: 
     </div>
   );
 };
-

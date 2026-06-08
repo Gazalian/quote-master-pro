@@ -72,7 +72,7 @@ export interface Invoice {
   total_amount: number;
   status: "PENDING" | "PAID" | "OVERDUE";
   payment_details: BankDetails;
-  data: any; // Entire quote data snapshot
+  data: unknown; // Entire quote data snapshot
   created_at: string;
   updated_at: string;
 }
@@ -122,6 +122,5 @@ export interface PriceLogEntry {
   lastUpdated?: string;
   type?: string;
 }
-
 
 

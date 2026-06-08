@@ -34,7 +34,7 @@ export function useUpdateProfile() {
   const key = bootstrapKey(user?.id);
 
   return useMutation({
-    mutationFn: (patch: ProfilePatch) => api.patch<any>('/api/profile', patch),
+    mutationFn: (patch: ProfilePatch) => api.patch<BootstrapPayload['profile']>('/api/profile', patch),
     onMutate: async (patch) => {
       await qc.cancelQueries({ queryKey: key });
       const prev = qc.getQueryData<BootstrapPayload>(key);

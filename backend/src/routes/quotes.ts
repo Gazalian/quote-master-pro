@@ -2,6 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth } from '../middleware/auth.js';
 import { generateQuote } from '../services/ai/index.js';
+import type { QuoteContext } from '../types/domain.js';
+import type { QuoteDraft } from '../types/domain.js';
 import {
   saveQuoteWithPoints,
   listQuotations,
@@ -17,6 +19,20 @@ const generateBody = z.object({
   conversationHistory: z
     .array(z.object({ role: z.enum(['user', 'ai']), content: z.string() }))
     .max(50)
+    .optional(),
+  currentQuote: z
+    .object({
+      ref: z.string().optional(),
+      client: z.string().optional(),
+      description: z.string().optional(),
+      groups: z.array(z.any()).max(100).optional(),
+      grandTotal: z.number().nonnegative().optional(),
+      templateStyle: z.enum(['classic', 'modern', 'minimal']).optional(),
+      status: z.enum(['APPROVED', 'INVOICED', 'ARCHIVED']).optional(),
+      version: z.number().int().optional(),
+    })
+    .passthrough()
+    .nullable()
     .optional(),
   pendingQuestions: z.array(z.string()).max(5).optional(),
   images: z
@@ -49,6 +65,11 @@ const updateBody = z
   })
   .strict();
 
+function profileString(profile: Record<string, unknown>, key: string, fallback: string): string {
+  const value = profile[key];
+  return typeof value === 'string' && value.trim() ? value : fallback;
+}
+
 export async function quoteRoutes(app: FastifyInstance): Promise<void> {
   // ── Generate ───────────────────────────────────────────────────────────────
   // Throttled separately because AI generation is the most expensive path.
@@ -66,15 +87,16 @@ export async function quoteRoutes(app: FastifyInstance): Promise<void> {
       // fresh enough (60s TTL) and gives us trade + state + price log in one
       // call instead of three round-trips.
       const boot = await getUserBootstrap(user.jwt, user.id);
-      const profile = (boot.profile ?? {}) as Record<string, any>;
+      const profile = boot.profile ?? {};
 
       const result = await generateQuote({
         userMessage: body.userMessage,
         conversationHistory: body.conversationHistory,
+        currentQuote: body.currentQuote as QuoteContext | null | undefined,
         pendingQuestions: body.pendingQuestions,
         images: body.images,
-        userTrade: profile.trade_type ?? 'general',
-        userLocation: profile.state_operation ?? 'Nigeria',
+        userTrade: profileString(profile, 'trade_type', 'general'),
+        userLocation: profileString(profile, 'state_operation', 'Nigeria'),
         priceLogEntries: boot.price_log,
         regionalPrices: boot.regional_prices,
         userPreferences: boot.preferences,
@@ -90,7 +112,7 @@ export async function quoteRoutes(app: FastifyInstance): Promise<void> {
     const body = saveBody.parse(req.body);
     const u = req.user!;
     return await saveQuoteWithPoints(u.jwt, u.id, {
-      draft: body.draft as any,
+      draft: body.draft as QuoteDraft,
       sessionId: body.sessionId,
       templateStyle: body.templateStyle ?? body.draft.templateStyle,
     });

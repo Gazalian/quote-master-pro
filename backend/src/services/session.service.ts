@@ -22,6 +22,12 @@ export interface ChatSessionUpsertInput {
 
 const MAX_MESSAGES_PER_SESSION = 500; // hard cap to avoid runaway JSONB writes
 
+type ChatMessageLike = {
+  type?: unknown;
+  imageUrl?: unknown;
+  [key: string]: unknown;
+};
+
 export async function listSessions(jwt: string, limit = 30) {
   const userClient = supabaseForUser(jwt);
   const { data, error } = await userClient
@@ -106,10 +112,11 @@ export async function upsertSession(jwt: string, userId: string, input: ChatSess
   // clients don't reintroduce the multi-MB blob problem.
   const messages = (input.messages ?? [])
     .slice(-MAX_MESSAGES_PER_SESSION)
-    .map((m: any) => {
-      if (m && m.type === 'image' && typeof m.imageUrl === 'string' && m.imageUrl.startsWith('data:')) {
+    .map((m: unknown) => {
+      const message = m as ChatMessageLike | null;
+      if (message && message.type === 'image' && typeof message.imageUrl === 'string' && message.imageUrl.startsWith('data:')) {
         // Drop the inline data — the client should have uploaded it instead.
-        return { ...m, imageUrl: '' };
+        return { ...message, imageUrl: '' };
       }
       return m;
     });

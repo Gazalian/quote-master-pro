@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/AuthContext';
@@ -34,14 +34,15 @@ const selectClass =
   'w-full px-4 py-3 rounded-xl border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-colors text-sm appearance-none cursor-pointer';
 
 // Map Supabase / network error messages to user-friendly text
-function friendlyError(err: any): { message: string; isRateLimit: boolean } {
-  const raw: string = (err?.message || err?.error_description || '').toLowerCase();
+function friendlyError(err: unknown): { message: string; isRateLimit: boolean } {
+  const error = err as { message?: string; error_description?: string; status?: number } | undefined;
+  const raw: string = (error?.message || error?.error_description || '').toLowerCase();
   if (
     raw.includes('429') ||
     raw.includes('rate') ||
     raw.includes('too many') ||
     raw.includes('over_email_send_rate_limit') ||
-    err?.status === 429
+    error?.status === 429
   ) {
     return {
       message: 'Too many signup attempts. Please wait 60 seconds before trying again.',
@@ -57,7 +58,7 @@ function friendlyError(err: any): { message: string; isRateLimit: boolean } {
   if (raw.includes('email not confirmed')) {
     return { message: 'Please confirm your email first — check your inbox (and spam folder).', isRateLimit: false };
   }
-  return { message: err?.message || 'Something went wrong. Please try again.', isRateLimit: false };
+  return { message: error?.message || 'Something went wrong. Please try again.', isRateLimit: false };
 }
 
 export default function AuthPage() {
@@ -138,7 +139,7 @@ export default function AuthPage() {
         if (error) throw error;
         navigate('/chat');
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       const { message, isRateLimit } = friendlyError(err);
       toast.error(message);
       if (isRateLimit) setCooldown(60); // 60-second cooldown after a 429
@@ -155,7 +156,7 @@ export default function AuthPage() {
 
   if (emailSent) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-accent/30 to-background p-4 animate-in fade-in zoom-in-95 duration-500">
+      <div className="min-h-app flex items-center justify-center bg-gradient-to-br from-background via-accent/30 to-background p-4 animate-in fade-in zoom-in-95 duration-500">
         <div className="w-full max-w-md bg-card p-8 rounded-2xl shadow-2xl border border-border/50 text-center">
           <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-5">
             <svg className="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -186,7 +187,7 @@ export default function AuthPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-accent/30 to-background p-4 animate-in fade-in zoom-in-95 duration-500">
+    <div className="min-h-app flex items-center justify-center bg-gradient-to-br from-background via-accent/30 to-background p-4 animate-in fade-in zoom-in-95 duration-500">
       <div className="w-full max-w-md bg-card p-8 rounded-2xl shadow-2xl border border-border/50">
         {/* Header */}
         <div className="text-center mb-8">

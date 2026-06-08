@@ -39,7 +39,6 @@ if (!envConfigured) {
     }
   }
 
-  // eslint-disable-next-line no-console
   console.error(
     '%c[supabase] Env vars missing.\n' +
       'VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are required.\n' +

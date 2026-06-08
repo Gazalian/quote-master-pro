@@ -25,6 +25,7 @@ const geminiResponseSchema = {
   type: SchemaType.OBJECT,
   properties: {
     reasoning: { type: SchemaType.STRING },
+    clientName: { type: SchemaType.STRING },
     projectTitle: { type: SchemaType.STRING },
     confidence: { type: SchemaType.STRING, enum: ['high', 'medium', 'low'] },
     clarifyingQuestions: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },

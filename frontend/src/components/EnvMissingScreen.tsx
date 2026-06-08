@@ -6,7 +6,7 @@
  * deploy is visible and self-explanatory instead of mysteriously silent.
  */
 export const EnvMissingScreen = () => (
-  <div className="min-h-screen flex items-center justify-center bg-background p-6">
+  <div className="min-h-app flex items-center justify-center bg-background p-6">
     <div className="w-full max-w-lg bg-card border border-destructive/30 rounded-2xl p-6 shadow-md">
       <div className="flex items-start gap-3 mb-4">
         <div className="w-10 h-10 rounded-xl bg-destructive/10 text-destructive flex items-center justify-center shrink-0">

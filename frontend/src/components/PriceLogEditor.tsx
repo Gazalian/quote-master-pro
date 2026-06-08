@@ -32,14 +32,14 @@ export const PriceLogEditor = ({ entry, type, onClose, onSave }: Props) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-background flex flex-col">
-      <div className="flex items-center justify-between px-4 h-14 bg-primary shrink-0">
-        <button onClick={onClose} className="text-primary-foreground"><X size={22} /></button>
-        <span className="text-primary-foreground font-semibold">{entry ? "Edit" : "Add"} {type === "MATERIALS" ? "Material" : "Labour"}</span>
-        <button onClick={handleSave} className="text-primary-foreground"><Save size={22} /></button>
+    <div className="fixed inset-0 z-50 h-app max-h-app overflow-hidden bg-background flex flex-col">
+      <div className="flex items-center justify-between gap-2 px-3 h-14 bg-primary shrink-0">
+        <button onClick={onClose} className="touch-target text-primary-foreground flex items-center justify-center rounded-full hover:bg-white/10" aria-label="Close price editor"><X size={22} /></button>
+        <span className="min-w-0 truncate text-primary-foreground font-semibold">{entry ? "Edit" : "Add"} {type === "MATERIALS" ? "Material" : "Labour"}</span>
+        <button onClick={handleSave} className="touch-target text-primary-foreground flex items-center justify-center rounded-full hover:bg-white/10" aria-label="Save price"><Save size={22} /></button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+      <div className="mobile-scroll flex-1 px-4 py-4 space-y-4 keyboard-aware-bottom">
         <Field label="Item Name" value={form.name} onChange={(v) => setForm({ ...form, name: v })} placeholder="e.g. 2.5mm Twin Cable" />
         
         <div>
@@ -47,7 +47,7 @@ export const PriceLogEditor = ({ entry, type, onClose, onSave }: Props) => {
           <select
             value={form.category}
             onChange={(e) => setForm({ ...form, category: e.target.value })}
-            className="w-full bg-secondary rounded-lg px-3.5 py-2.5 text-sm text-foreground outline-none border border-border"
+            className="w-full bg-secondary rounded-lg px-3.5 py-2.5 text-base sm:text-sm text-foreground outline-none border border-border"
           >
             {categories.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
@@ -62,7 +62,7 @@ export const PriceLogEditor = ({ entry, type, onClose, onSave }: Props) => {
             value={form.unitPrice || ""}
             onChange={(e) => setForm({ ...form, unitPrice: Number(e.target.value) })}
             placeholder="0"
-            className="w-full bg-secondary rounded-lg px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground outline-none border border-border focus:border-primary"
+            className="w-full bg-secondary rounded-lg px-3.5 py-2.5 text-base sm:text-sm text-foreground placeholder:text-muted-foreground outline-none border border-border focus:border-primary"
           />
         </div>
 
@@ -81,7 +81,7 @@ const Field = ({ label, value, onChange, placeholder }: { label: string; value: 
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      className="w-full bg-secondary rounded-lg px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground outline-none border border-border focus:border-primary"
+      className="w-full bg-secondary rounded-lg px-3.5 py-2.5 text-base sm:text-sm text-foreground placeholder:text-muted-foreground outline-none border border-border focus:border-primary"
     />
   </div>
 );

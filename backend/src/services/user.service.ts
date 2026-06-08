@@ -10,6 +10,24 @@ import { ApiError } from '../middleware/error.js';
 import { logger } from '../utils/logger.js';
 import type { BootstrapPayload } from '../types/domain.js';
 
+interface SupabaseRpcError {
+  code?: string;
+  details?: string;
+  hint?: string;
+}
+
+interface RawBootstrapPayload {
+  profile?: BootstrapPayload['profile'];
+  preferences?: {
+    wastage_rules?: Record<string, number>;
+    document_flow?: string[];
+    negative_preferences?: string[];
+    brand_loyalty?: Record<string, string>;
+  } | null;
+  regional_prices?: BootstrapPayload['regional_prices'];
+  price_log?: BootstrapPayload['price_log'];
+}
+
 // Bootstrap is mostly stable per user. 60-second TTL gives request bursts a
 // shared cache without making profile edits feel too stale.
 const bootstrapCache = new MemoryCache<string, BootstrapPayload>(60 * 1000);
@@ -24,22 +42,23 @@ export async function getUserBootstrap(jwt: string, userId: string): Promise<Boo
   const userClient = supabaseForUser(jwt);
   const { data, error } = await userClient.rpc('get_user_bootstrap');
   if (error || !data) {
+    const rpcError = error as SupabaseRpcError | null;
     // Surface the full Supabase error so the outage runbook (step 7) has
     // something to grep on. `code` / `details` / `hint` come from PostgREST.
     logger.error(
       {
         userId,
         err: error?.message,
-        code: (error as any)?.code,
-        details: (error as any)?.details,
-        hint: (error as any)?.hint,
+        code: rpcError?.code,
+        details: rpcError?.details,
+        hint: rpcError?.hint,
       },
       'bootstrap RPC failed',
     );
     throw new ApiError(500, `bootstrap failed: ${error?.message ?? 'unknown'}`);
   }
 
-  const raw = data as any;
+  const raw = data as RawBootstrapPayload;
   const payload: BootstrapPayload = {
     profile: raw.profile ?? null,
     preferences: raw.preferences

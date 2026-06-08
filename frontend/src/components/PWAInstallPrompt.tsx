@@ -6,6 +6,10 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }
 
+interface NavigatorWithStandalone extends Navigator {
+  standalone?: boolean;
+}
+
 const PWAInstallPrompt = () => {
   const [showPrompt, setShowPrompt] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
@@ -17,7 +21,7 @@ const PWAInstallPrompt = () => {
     // Don't show if already installed as PWA
     const isStandalone =
       window.matchMedia('(display-mode: standalone)').matches ||
-      (window.navigator as any).standalone === true;
+      (window.navigator as NavigatorWithStandalone).standalone === true;
 
     if (isStandalone) return;
 
@@ -79,15 +83,15 @@ const PWAInstallPrompt = () => {
       />
 
       {/* Bottom Sheet */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 animate-in slide-in-from-bottom-4 duration-300">
-        <div className="bg-white rounded-t-3xl shadow-2xl p-6 max-w-lg mx-auto">
+      <div className="fixed bottom-0 left-0 right-0 z-50 animate-in slide-in-from-bottom-4 duration-300 keyboard-aware-bottom px-3 pt-3">
+        <div className="relative max-h-[min(90dvh,var(--app-height,90vh))] overflow-y-auto bg-white rounded-t-3xl shadow-2xl p-5 sm:p-6 max-w-lg mx-auto">
           {/* Handle */}
           <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-5" />
 
           {/* Dismiss */}
           <button
             onClick={handleDismiss}
-            className="absolute top-4 right-4 p-2 rounded-full hover:bg-gray-100 text-gray-400 transition-colors"
+            className="touch-target absolute top-4 right-4 rounded-full hover:bg-gray-100 text-gray-400 transition-colors flex items-center justify-center"
             aria-label="Close"
           >
             <X size={20} />

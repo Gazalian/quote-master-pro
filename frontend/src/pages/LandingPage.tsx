@@ -37,7 +37,7 @@ const LandingPage = () => {
   }, []);
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-app bg-white">
       <PWAInstallPrompt />
       {/* Navigation */}
       <nav className="sticky top-0 z-50 w-full border-b border-gray-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">

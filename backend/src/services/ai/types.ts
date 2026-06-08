@@ -10,6 +10,7 @@ import type {
   RegionalPriceEntry,
   UserPreferences,
   QuoteDraft,
+  QuoteContext,
 } from '../../types/domain.js';
 
 export type ProviderName = 'openai' | 'gemini';
@@ -18,6 +19,7 @@ export interface AIGenerateInput {
   userMessage: string;
   images?: { mimeType: string; data: string }[]; // base64, no prefix
   conversationHistory?: ConversationTurn[];
+  currentQuote?: QuoteContext | null;
   userTrade?: string;
   userLocation?: string;
   priceLogEntries?: PriceLogEntry[];

@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 
 const baseInput =
   "w-full px-4 py-3 min-h-[44px] rounded-xl border border-border bg-background " +
-  "text-foreground placeholder:text-muted-foreground/70 text-[15px] " +
+  "text-foreground placeholder:text-muted-foreground/70 text-base sm:text-[15px] " +
   "focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary " +
   "transition-colors";
 
@@ -87,7 +87,7 @@ export const SectionCard = ({
   children: ReactNode;
 }) => (
   <section className="bg-card rounded-2xl border border-border/60 shadow-[0_1px_2px_rgba(0,0,0,0.03)] overflow-hidden">
-    <header className="flex items-start gap-3 px-5 py-4 border-b border-border/50">
+    <header className="flex flex-wrap items-start gap-3 px-4 sm:px-5 py-4 border-b border-border/50">
       {icon && (
         <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
           {icon}
@@ -101,7 +101,7 @@ export const SectionCard = ({
       </div>
       {action}
     </header>
-    <div className="p-5">{children}</div>
+    <div className="p-4 sm:p-5">{children}</div>
   </section>
 );
 

@@ -105,8 +105,12 @@ export const QuoteEditor = ({ quote, onClose, onSave }: Props) => {
            item.unit = match.unit;
            item.source = "my_price";
         }
+      } else if (field === "unit") {
+        item.unit = value as string;
+      } else if (field === "source") {
+        item.source = value as QuoteItem["source"];
       } else {
-        (item as any)[field] = value;
+        return prev;
       }
       return recalculate(next);
     });
@@ -160,7 +164,11 @@ export const QuoteEditor = ({ quote, onClose, onSave }: Props) => {
   const toggleGroup = (groupId: string) => {
     setCollapsedGroups((prev) => {
       const next = new Set(prev);
-      next.has(groupId) ? next.delete(groupId) : next.add(groupId);
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
       return next;
     });
   };
@@ -197,8 +205,8 @@ export const QuoteEditor = ({ quote, onClose, onSave }: Props) => {
     setEditedQuote((prev) => {
       const next = JSON.parse(JSON.stringify(prev)) as Quote;
       
-      let activeGroupIdx = next.groups.findIndex(g => g.items.some(i => i.id === activeId));
-      let overGroupIdx = isOverGroup 
+      const activeGroupIdx = next.groups.findIndex(g => g.items.some(i => i.id === activeId));
+      const overGroupIdx = isOverGroup 
         ? next.groups.findIndex(g => g.id === overId)
         : next.groups.findIndex(g => g.items.some(i => i.id === overId));
       
@@ -266,13 +274,13 @@ export const QuoteEditor = ({ quote, onClose, onSave }: Props) => {
 
   const renderItemContent = (item: QuoteItem, gi: number, ii: number) => {
     return (
-      <div className="border border-border rounded-lg bg-card p-2.5 space-y-1.5 shadow-sm">
-        <div className="flex items-center justify-between">
+      <div className="border border-border rounded-lg bg-card p-3 space-y-3 shadow-sm">
+        <div className="flex items-start justify-between gap-2">
           <input
             list={`prices-${gi}-${ii}`}
             value={item.name}
             onChange={(e) => updateItem(gi, ii, "name", e.target.value)}
-            className="flex-1 text-sm font-medium text-foreground bg-transparent outline-none"
+            className="min-w-0 flex-1 text-base sm:text-sm font-medium text-foreground bg-transparent outline-none"
             placeholder="Item name..."
           />
           <datalist id={`prices-${gi}-${ii}`}>
@@ -280,47 +288,51 @@ export const QuoteEditor = ({ quote, onClose, onSave }: Props) => {
               <option key={p.id} value={p.name}>{formatNGN(p.unitPrice)} - {p.unit}</option>
             ))}
           </datalist>
-          <div className="flex items-center gap-1.5 pl-2">
+          <div className="flex shrink-0 items-center gap-1.5">
             <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap ${
               item.source === "my_price" ? "bg-badge-approved/15 text-badge-myprice" : "bg-badge-invoiced/15 text-badge-ai"
             }`}>
               {item.source === "my_price" ? "MY PRICE" : "AI EST."}
             </span>
-            <button onClick={() => deleteItem(gi, ii)} className="text-destructive p-1 hover:bg-destructive/10 rounded">
+            <button
+              onClick={() => deleteItem(gi, ii)}
+              className="touch-target text-destructive hover:bg-destructive/10 rounded-lg flex items-center justify-center"
+              aria-label={`Delete ${item.name}`}
+            >
               <Trash2 size={14} />
             </button>
           </div>
         </div>
-        <div className="flex gap-2">
-          <div className="flex-1">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-[1fr_1fr_1.35fr_auto]">
+          <div className="min-w-0">
             <label className="text-[9px] text-muted-foreground">Qty</label>
             <input
               type="number"
               value={item.qty}
               onChange={(e) => updateItem(gi, ii, "qty", e.target.value)}
-              className="w-full bg-secondary rounded px-2 py-1 text-xs text-foreground outline-none border border-transparent focus:border-primary"
+              className="w-full bg-secondary rounded-lg px-2 py-2 text-base sm:text-xs text-foreground outline-none border border-transparent focus:border-primary"
             />
           </div>
-          <div className="flex-1">
+          <div className="min-w-0">
             <label className="text-[9px] text-muted-foreground">Unit</label>
             <input
               value={item.unit}
               onChange={(e) => updateItem(gi, ii, "unit", e.target.value)}
-              className="w-full bg-secondary rounded px-2 py-1 text-xs text-foreground outline-none border border-transparent focus:border-primary"
+              className="w-full bg-secondary rounded-lg px-2 py-2 text-base sm:text-xs text-foreground outline-none border border-transparent focus:border-primary"
             />
           </div>
-          <div className="flex-1">
+          <div className="min-w-0">
             <label className="text-[9px] text-muted-foreground">Price (₦)</label>
             <input
               type="number"
               value={item.unitPrice}
               onChange={(e) => updateItem(gi, ii, "unitPrice", e.target.value)}
-              className="w-full bg-secondary rounded px-2 py-1 text-xs text-foreground outline-none border border-transparent focus:border-primary"
+              className="w-full bg-secondary rounded-lg px-2 py-2 text-base sm:text-xs text-foreground outline-none border border-transparent focus:border-primary"
             />
           </div>
-          <div className="w-16 text-right shrink-0">
+          <div className="min-w-0 text-right">
             <label className="text-[9px] text-muted-foreground">Total</label>
-            <p className="text-xs font-semibold text-foreground py-1 truncate">{formatNGN(item.total)}</p>
+            <p className="text-sm sm:text-xs font-semibold text-foreground py-2 truncate">{formatNGN(item.total)}</p>
           </div>
         </div>
       </div>
@@ -346,24 +358,24 @@ export const QuoteEditor = ({ quote, onClose, onSave }: Props) => {
         type: "MATERIALS",
       });
       toast.success(`Saved to Price Log: ${priceLogPrompt.itemName}`);
-    } catch (e: any) {
-      toast.error(e?.message || "Failed to save to Price Log");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to save to Price Log");
     } finally {
       setPriceLogPrompt(null);
     }
   }, [user, priceLogPrompt, editedQuote.groups, upsertPrice]);
 
   return (
-    <div className="fixed inset-0 z-[100] bg-background flex flex-col">
+    <div className="fixed inset-0 z-[100] h-app max-h-app w-full overflow-hidden bg-background flex flex-col">
       {/* Header — padding-top pushes content below the iOS status bar */}
       <div
-        className="flex items-center justify-between px-4 bg-primary shrink-0"
+        className="flex items-center justify-between gap-2 px-3 sm:px-4 bg-primary shrink-0"
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)', minHeight: 'calc(3.5rem + env(safe-area-inset-top, 0px))' }}
       >
-        <button onClick={onClose} className="text-primary-foreground hover:bg-white/10 p-1.5 rounded-full transition-colors">
+        <button onClick={onClose} className="touch-target text-primary-foreground hover:bg-white/10 rounded-full transition-colors flex items-center justify-center" aria-label="Close editor">
           <X size={22} />
         </button>
-        <div className="flex bg-black/20 p-1 rounded-lg">
+        <div className="flex min-w-0 bg-black/20 p-1 rounded-lg">
           <button 
             onClick={() => setViewMode("edit")}
             className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${viewMode === "edit" ? "bg-white text-primary shadow-sm" : "text-primary-foreground hover:bg-white/10"}`}
@@ -377,13 +389,13 @@ export const QuoteEditor = ({ quote, onClose, onSave }: Props) => {
             Preview
           </button>
         </div>
-        <button onClick={handleSave} className="text-primary-foreground hover:bg-white/10 p-1.5 rounded-full transition-colors">
+        <button onClick={handleSave} className="touch-target text-primary-foreground hover:bg-white/10 rounded-full transition-colors flex items-center justify-center" aria-label="Save quote">
           <Save size={22} />
         </button>
       </div>
 
       {viewMode === "preview" ? (
-        <div className="flex-1 overflow-y-auto bg-secondary/30 p-2 md:p-6 pb-24">
+        <div className="mobile-scroll flex-1 bg-secondary/30 p-2 md:p-6 pb-24">
            <div className="max-w-3xl mx-auto pointer-events-none">
              <QuoteCard quote={editedQuote} />
            </div>
@@ -391,14 +403,14 @@ export const QuoteEditor = ({ quote, onClose, onSave }: Props) => {
       ) : (
         <>
           {/* Client info */}
-      <div className="px-4 py-3 bg-card border-b border-border space-y-2 shrink-0">
+      <div className="px-4 py-3 bg-card border-b border-border space-y-3 shrink-0">
         <div>
           <label className="text-[10px] text-muted-foreground font-medium uppercase">Client</label>
           <input
             value={editedQuote.client}
             onChange={(e) => setEditedQuote((prev) => ({ ...prev, client: e.target.value }))}
             placeholder="Client X"
-            className="w-full text-sm font-medium text-foreground bg-transparent outline-none border-b border-border py-1 focus:border-primary transition-colors"
+            className="w-full text-base sm:text-sm font-medium text-foreground bg-transparent outline-none border-b border-border py-2 focus:border-primary transition-colors"
           />
         </div>
         <div>
@@ -406,13 +418,13 @@ export const QuoteEditor = ({ quote, onClose, onSave }: Props) => {
           <input
             value={editedQuote.description}
             onChange={(e) => setEditedQuote((prev) => ({ ...prev, description: e.target.value }))}
-            className="w-full text-sm text-foreground bg-transparent outline-none border-b border-border py-1 focus:border-primary transition-colors"
+            className="w-full text-base sm:text-sm text-foreground bg-transparent outline-none border-b border-border py-2 focus:border-primary transition-colors"
           />
         </div>
       </div>
 
       {/* DnD Groups Area */}
-      <div className="flex-1 overflow-y-auto px-2 md:px-4 py-3 bg-secondary/30">
+      <div className="mobile-scroll flex-1 px-2 md:px-4 py-3 bg-secondary/30">
         <DndContext
           sensors={sensors}
           collisionDetection={closestCorners}
@@ -429,7 +441,7 @@ export const QuoteEditor = ({ quote, onClose, onSave }: Props) => {
 
                 return (
                   <SortableGroup key={group.id} id={group.id}>
-                    <div className="w-full flex items-center justify-between px-4 py-3 bg-secondary rounded-t-xl hover:bg-secondary/80 transition-colors">
+                    <div className="w-full flex items-center justify-between gap-2 px-3 sm:px-4 py-3 bg-secondary rounded-t-xl hover:bg-secondary/80 transition-colors">
                       <div className="flex items-center gap-2 flex-1 mr-2 min-w-0">
                         <span className="text-xs font-bold text-foreground uppercase tracking-wide shrink-0">
                           {gi + 1}.
@@ -442,11 +454,15 @@ export const QuoteEditor = ({ quote, onClose, onSave }: Props) => {
                           placeholder="Category Name"
                         />
                       </div>
-                      <div className="flex items-center gap-3 shrink-0">
-                        <span className="text-xs font-semibold text-primary">{formatNGN(groupTotal)}</span>
+                      <div className="flex min-w-0 items-center gap-2 shrink-0">
+                        <span className="max-w-[7rem] truncate text-xs font-semibold text-primary">{formatNGN(groupTotal)}</span>
                         <button 
-                          onClick={(e) => { e.stopPropagation(); toggleGroup(group.id); }}
-                          className="p-1 hover:bg-black/5 rounded-full text-muted-foreground"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleGroup(group.id);
+                          }}
+                          className="touch-target hover:bg-black/5 rounded-full text-muted-foreground flex items-center justify-center"
+                          aria-label={collapsed ? `Expand ${group.name}` : `Collapse ${group.name}`}
                         >
                           {collapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
                         </button>
@@ -502,8 +518,7 @@ export const QuoteEditor = ({ quote, onClose, onSave }: Props) => {
 
       {/* VAT & Total — padding-bottom covers iPhone home indicator */}
       <div
-        className="px-4 pt-3 bg-card border-t border-border space-y-2 shrink-0 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]"
-        style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
+        className="keyboard-aware-bottom px-4 pt-3 bg-card border-t border-border space-y-2 shrink-0 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]"
       >
         <div className="flex items-center justify-between">
           <label className="text-sm text-foreground font-medium">Add 7.5% VAT</label>
@@ -529,8 +544,7 @@ export const QuoteEditor = ({ quote, onClose, onSave }: Props) => {
       {/* Price Log Prompt */}
       {priceLogPrompt && (
         <div
-          className="fixed inset-x-0 bottom-0 z-[110] px-4 pt-4 bg-card border-t border-border shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.15)] animate-in slide-in-from-bottom-5"
-          style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}
+          className="fixed inset-x-0 bottom-0 z-[110] keyboard-aware-bottom px-4 pt-4 bg-card border-t border-border shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.15)] animate-in slide-in-from-bottom-5"
         >
           <p className="text-sm text-foreground mb-4">
             Save <span className="font-bold text-primary">{formatNGN(priceLogPrompt.price)}</span> as your price for{" "}
@@ -539,13 +553,13 @@ export const QuoteEditor = ({ quote, onClose, onSave }: Props) => {
           <div className="flex gap-2">
             <button
               onClick={handleSaveToPriceLog}
-              className="flex-1 bg-primary text-primary-foreground py-2.5 rounded-xl text-sm font-semibold hover:opacity-90 transition-opacity"
+              className="min-h-[44px] flex-1 bg-primary text-primary-foreground py-2.5 rounded-xl text-sm font-semibold hover:opacity-90 transition-opacity"
             >
               Save to Price Log
             </button>
             <button
               onClick={() => setPriceLogPrompt(null)}
-              className="flex-1 bg-secondary text-secondary-foreground py-2.5 rounded-xl text-sm font-semibold hover:bg-secondary/80 transition-colors"
+              className="min-h-[44px] flex-1 bg-secondary text-secondary-foreground py-2.5 rounded-xl text-sm font-semibold hover:bg-secondary/80 transition-colors"
             >
               Skip
             </button>

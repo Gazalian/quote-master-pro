@@ -12,6 +12,7 @@ import { MemoryCache } from '../cache/memory.js';
 import type {
   ConversationTurn,
   PriceLogEntry,
+  QuoteContext,
   RegionalPriceEntry,
   UserPreferences,
 } from '../types/domain.js';
@@ -71,6 +72,30 @@ function normaliseTrade(t: string): string {
   if (v.includes('tile')) return 'tiler';
   if (v.includes('carpent')) return 'carpenter';
   return 'general';
+}
+
+function compactQuoteForPrompt(quote: QuoteContext): Record<string, unknown> {
+  return {
+    ref: quote.ref,
+    client: quote.client,
+    description: quote.description,
+    templateStyle: quote.templateStyle,
+    status: quote.status,
+    version: quote.version,
+    grandTotal: quote.grandTotal,
+    groups: (quote.groups ?? []).slice(0, 20).map((group) => ({
+      name: group.name,
+      items: (group.items ?? []).slice(0, 60).map((item) => ({
+        name: item.name,
+        qty: item.qty,
+        unit: item.unit,
+        unitPrice: item.unitPrice,
+        total: item.total,
+        source: item.source,
+        regionName: item.regionName,
+      })),
+    })),
+  };
 }
 
 /**
@@ -148,6 +173,7 @@ OUTPUT RULES:
 export function buildDynamicPrompt(input: {
   userMessage: string;
   conversationHistory?: ConversationTurn[];
+  currentQuote?: QuoteContext | null;
   hasImages: boolean;
   priceLogEntries?: PriceLogEntry[];
   regionalPrices?: RegionalPriceEntry[];
@@ -198,9 +224,22 @@ export function buildDynamicPrompt(input: {
     }
   }
 
-  // Conversation (last 8 turns — keeps token cost bounded)
+  // Current quote context comes before chat history so follow-up edits anchor
+  // to the latest quotation instead of reconstructing from prose.
+  if (input.currentQuote && (input.currentQuote.groups?.length ?? 0) > 0) {
+    prompt += `CURRENT QUOTATION TO MODIFY (AUTHORITATIVE BASELINE):\n`;
+    prompt += `${JSON.stringify(compactQuoteForPrompt(input.currentQuote), null, 2)}\n\n`;
+    prompt += `QUOTE MODIFICATION RULES:\n`;
+    prompt += `  1. Treat the current quotation above as the latest saved/edited state.\n`;
+    prompt += `  2. Apply the user's newest instruction incrementally; do not restart from scratch unless explicitly asked.\n`;
+    prompt += `  3. Preserve existing client, scope, groups, items, quantities, units, prices, and source labels unless the conversation asks to change them.\n`;
+    prompt += `  4. Preserve source = "my_price" prices unless the user explicitly changes that item price.\n`;
+    prompt += `  5. Return a complete updated quotation, not a diff or explanation-only response.\n\n`;
+  }
+
+  // Conversation (last 12 turns — keeps token cost bounded)
   if (input.conversationHistory && input.conversationHistory.length > 0) {
-    const recent = input.conversationHistory.slice(-8);
+    const recent = input.conversationHistory.slice(-12);
     prompt += `CONVERSATION HISTORY:\n`;
     for (const t of recent) prompt += `${t.role === 'user' ? 'Customer' : 'AI'}: ${t.content}\n`;
     prompt += '\n';
@@ -218,7 +257,7 @@ export function buildDynamicPrompt(input: {
     prompt += `Check above to see if customer answered. Re-ask only still-unanswered ones (max 2).\n\n`;
   }
 
-  prompt += `ACTION: Generate the complete quotation now. Use Nigerian construction knowledge to fill any gaps.`;
+  prompt += `ACTION: Generate the complete professional quotation now. Respect the current quotation, previous chat instructions, personal prices, regional prices, and the latest request.`;
   return prompt;
 }
 

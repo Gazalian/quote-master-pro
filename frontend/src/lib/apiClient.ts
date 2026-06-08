@@ -11,7 +11,56 @@
 import { supabase } from './supabase';
 
 const RAW_BASE_URL = import.meta.env.VITE_API_BASE_URL;
-const BASE_URL = RAW_BASE_URL || 'http://localhost:3001';
+const API_DEV_PORT = '3001';
+
+function isLoopbackHost(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname.endsWith('.local');
+}
+
+function resolveBaseUrl(rawBaseUrl?: string, location?: Location): string {
+  const fallback = `http://localhost:${API_DEV_PORT}`;
+  const configured = rawBaseUrl || fallback;
+
+  if (!location || !import.meta.env.DEV) return configured;
+
+  const pageHost = location.hostname;
+  if (isLoopbackHost(pageHost)) return configured;
+
+  try {
+    const apiUrl = new URL(configured);
+    if (!isLoopbackHost(apiUrl.hostname)) return configured;
+
+    // Vite exposes LAN URLs like http://192.168.x.x:8080. In that case a
+    // browser-side call to localhost:3001 points at the browser's device, not
+    // this dev machine. Keep the backend port, but follow the page host.
+    apiUrl.hostname = pageHost;
+    apiUrl.port = apiUrl.port || API_DEV_PORT;
+    apiUrl.protocol = location.protocol;
+    return apiUrl.toString().replace(/\/$/, '');
+  } catch {
+    return configured;
+  }
+}
+
+const BASE_URL = resolveBaseUrl(RAW_BASE_URL, typeof window !== 'undefined' ? window.location : undefined);
+
+type ApiErrorBody = {
+  error?: unknown;
+  code?: string;
+};
+
+type OtoquoteDiagResult = {
+  baseUrl: string;
+  whoami?: unknown;
+  counts?: unknown;
+  error?: string;
+};
+
+declare global {
+  interface Window {
+    __otoquoteDiag?: () => Promise<OtoquoteDiagResult>;
+  }
+}
 
 // ────────────────────────────────────────────────────────────────────────────
 // Boot-time guardrail.
@@ -30,7 +79,6 @@ if (typeof window !== 'undefined') {
   const host = window.location.hostname;
   const isLocal = host === 'localhost' || host === '127.0.0.1' || host.endsWith('.local');
   if (!RAW_BASE_URL && !isLocal) {
-    // eslint-disable-next-line no-console
     console.error(
       '%c[apiClient] VITE_API_BASE_URL is not set.\n' +
         `Page is at ${window.location.origin}, but API calls will go to ${BASE_URL}, which is unreachable from this origin.\n` +
@@ -72,12 +120,12 @@ async function parseResponse<T>(res: Response, url: string): Promise<T> {
   const ct = res.headers.get('content-type') ?? '';
   const body = ct.includes('application/json') ? await res.json() : await res.text();
   if (!res.ok) {
+    const errorBody = body && typeof body === 'object' ? (body as ApiErrorBody) : null;
     const msg =
-      (body && typeof body === 'object' && 'error' in body && (body as any).error) ||
+      errorBody?.error ||
       res.statusText;
     const code =
-      (body && typeof body === 'object' && 'code' in body && (body as any).code) || undefined;
-    // eslint-disable-next-line no-console
+      errorBody?.code || undefined;
     console.warn(`[apiClient] ${res.status} ${url} —`, msg);
     throw new ApiClientError(res.status, String(msg), code);
   }
@@ -106,7 +154,6 @@ async function doFetch(url: string, init: RequestInit): Promise<Response> {
   } catch (err) {
     // Network-level (CORS preflight rejected, DNS, server unreachable).
     // The original error doesn't carry the URL — rewrap so consumers see it.
-    // eslint-disable-next-line no-console
     console.error(`[apiClient] network error → ${url}`, err);
     throw new ApiNetworkError(url, err);
   }
@@ -176,17 +223,15 @@ export const api = {
  * Returns whoami + per-table counts visible under the current JWT.
  */
 if (typeof window !== 'undefined') {
-  (window as any).__otoquoteDiag = async () => {
+  window.__otoquoteDiag = async () => {
     try {
       const [whoami, counts] = await Promise.all([
         api.get('/api/debug/whoami'),
         api.get('/api/debug/counts'),
       ]);
-      // eslint-disable-next-line no-console
       console.log('[otoquote-diag]', { baseUrl: BASE_URL, whoami, counts });
       return { baseUrl: BASE_URL, whoami, counts };
     } catch (err) {
-      // eslint-disable-next-line no-console
       console.error('[otoquote-diag] failed', err);
       return { baseUrl: BASE_URL, error: (err as Error).message };
     }

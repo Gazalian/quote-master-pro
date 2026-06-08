@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+﻿import { createContext, useContext, useEffect, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { QueryClient } from '@tanstack/react-query';
 import { supabase } from './supabase';
@@ -55,7 +55,7 @@ export const AuthProvider = ({ children, queryClient }: AuthProviderProps) => {
 
   return (
     <AuthContext.Provider value={{ user, session, loading }}>
-      <div className="min-h-screen bg-background text-foreground animate-in fade-in duration-500">
+      <div className="min-h-app bg-background text-foreground animate-in fade-in duration-500">
         {children}
       </div>
     </AuthContext.Provider>

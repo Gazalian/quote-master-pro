@@ -24,6 +24,43 @@ declare module 'fastify' {
   }
 }
 
+const DEV_FRONTEND_PORTS = new Set(['8080', '8081', '5173']);
+
+function isPrivateNetworkHost(hostname: string): boolean {
+  return (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '::1' ||
+    hostname.startsWith('10.') ||
+    hostname.startsWith('192.168.') ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname)
+  );
+}
+
+function isAllowedDevOrigin(origin: string): boolean {
+  if (env.NODE_ENV !== 'development') return false;
+
+  try {
+    const url = new URL(origin);
+    return DEV_FRONTEND_PORTS.has(url.port) && isPrivateNetworkHost(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
+// CORS_ORIGIN entries support `*` as a wildcard so a single value can cover
+// every Vercel preview deployment (e.g. `https://*.vercel.app`).
+const corsOriginMatchers: Array<(origin: string) => boolean> = corsOrigins.map((pattern) => {
+  if (!pattern.includes('*')) return (origin) => origin === pattern;
+  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
+  const re = new RegExp(`^${escaped}$`);
+  return (origin) => re.test(origin);
+});
+
+function isAllowedConfiguredOrigin(origin: string): boolean {
+  return corsOriginMatchers.some((matches) => matches(origin));
+}
+
 async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
     logger: loggerOptions,
@@ -59,8 +96,13 @@ async function buildApp(): Promise<FastifyInstance> {
   await app.register(cors, {
     origin(origin, cb) {
       if (!origin) return cb(null, true); // same-origin / curl / mobile WebView
-      if (corsOrigins.includes(origin)) return cb(null, true);
-      cb(new Error('Not allowed by CORS'), false);
+      if (isAllowedConfiguredOrigin(origin)) return cb(null, true);
+      if (isAllowedDevOrigin(origin)) return cb(null, true);
+      // Reject quietly with `false` instead of an Error so this doesn't
+      // surface as an "Unhandled error" in production logs. Log at warn so
+      // a misconfigured CORS_ORIGIN is still debuggable.
+      app.log.warn({ origin, allowed: corsOrigins }, 'CORS rejected origin');
+      cb(null, false);
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

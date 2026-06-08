@@ -23,12 +23,15 @@ export default defineConfig(({ mode }) => ({
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
       },
       manifest: {
+        id: "/",
         name: "OtoQuote AI",
         short_name: "OtoQuote",
         description: "AI-powered quotation app for Nigerian tradespeople",
-        theme_color: "#0f8a6e",
+        theme_color: "#0056D2",
         background_color: "#f5f7f9",
+        scope: "/",
         display: "standalone",
+        display_override: ["standalone", "minimal-ui", "browser"],
         orientation: "portrait",
         start_url: "/auth",
         icons: [

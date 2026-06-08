@@ -37,6 +37,7 @@ function buildPrompt(input: AIGenerateInput): BuiltPrompt {
     dynamicUser: buildDynamicPrompt({
       userMessage: input.userMessage,
       conversationHistory: input.conversationHistory,
+      currentQuote: input.currentQuote ?? null,
       hasImages: !!input.images?.length,
       priceLogEntries: input.priceLogEntries,
       regionalPrices: input.regionalPrices,
@@ -78,7 +79,7 @@ export async function generateQuote(input: AIGenerateInput): Promise<AIGenerateR
         const raw = await provider.generate(prompt, ac.signal);
         let draft;
         try {
-          draft = parseQuoteDraft(raw);
+          draft = parseQuoteDraft(raw, { currentQuote: input.currentQuote ?? null });
         } catch (parseErr) {
           // Provider's structured-output contract failed. Treat it as a
           // provider fault so the next provider gets a shot.

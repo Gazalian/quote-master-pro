@@ -14,6 +14,7 @@ export const QUOTE_RESPONSE_SCHEMA = {
   additionalProperties: false,
   properties: {
     reasoning: { type: 'string' },
+    clientName: { type: 'string' },
     projectTitle: { type: 'string' },
     confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
     clarifyingQuestions: { type: 'array', items: { type: 'string' } },

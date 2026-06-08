@@ -18,6 +18,13 @@ export interface QuoteListRow {
   updated_at: string;
 }
 
+export interface QuoteDetailRow extends QuoteListRow {
+  user_id?: string;
+  data?: {
+    groups?: Quote['groups'];
+  };
+}
+
 const quotesKey = (status?: string | null) => ['quotes', { status: status ?? 'all' }] as const;
 const quoteKey = (id: string) => ['quotes', id] as const;
 
@@ -33,7 +40,7 @@ export function useQuotesList(status?: QuoteStatus | 'ALL') {
 export function useQuote(id: string | null) {
   return useQuery({
     queryKey: id ? quoteKey(id) : ['quotes', 'noop'],
-    queryFn: () => api.get<any>(`/api/quotes/${id}`),
+    queryFn: () => api.get<QuoteDetailRow>(`/api/quotes/${id}`),
     enabled: !!id,
     staleTime: 30_000,
   });
@@ -43,15 +50,27 @@ export interface GenerateQuoteInput {
   userMessage: string;
   sessionId?: string | null;
   conversationHistory?: { role: 'user' | 'ai'; content: string }[];
+  currentQuote?: Quote | null;
   pendingQuestions?: string[];
   images?: { mimeType: string; data: string }[];
   signal?: AbortSignal;
 }
 
+export interface GeneratedQuoteDraft {
+  ref: string;
+  client: string;
+  description: string;
+  groups: Quote['groups'];
+  grandTotal: number;
+  templateStyle?: Quote['templateStyle'];
+  reasoning?: string;
+  clarifyingQuestions?: string[];
+}
+
 export function useGenerateQuote() {
   return useMutation({
     mutationFn: ({ signal, ...input }: GenerateQuoteInput) =>
-      api.post<{ draft: any }>('/api/quotes/generate', input, { signal }),
+      api.post<{ draft: GeneratedQuoteDraft }>('/api/quotes/generate', input, { signal }),
   });
 }
 
@@ -65,7 +84,7 @@ export function useSaveQuote() {
   const qc = useQueryClient();
   const { user } = useAuth();
   return useMutation({
-    mutationFn: (input: SaveQuoteInput) => api.post<any>('/api/quotes/save', input),
+    mutationFn: (input: SaveQuoteInput) => api.post<QuoteDetailRow>('/api/quotes/save', input),
     onSuccess: () => {
       // Saved quote means: list changed and the user's point balance changed.
       qc.invalidateQueries({ queryKey: ['quotes'] });

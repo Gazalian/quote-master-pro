@@ -89,6 +89,7 @@
   html {
     scroll-behavior: smooth;
     height: -webkit-fill-available;
+    width: 100%;
   }
   body {
     @apply bg-background text-foreground font-sans antialiased;
@@ -98,6 +99,19 @@
     min-height: -webkit-fill-available;
     /* Prevent whole-page rubber-band scroll — only chat container should bounce */
     overscroll-behavior: none;
+    width: 100%;
+  }
+
+  #root {
+    min-height: 100vh;
+    min-height: var(--app-height, 100dvh);
+    width: 100%;
+  }
+
+  input,
+  textarea,
+  select {
+    font-size: 16px;
   }
 }
 
@@ -113,6 +127,43 @@
     min-height: 100vh;
     min-height: var(--app-height, 100dvh);
   }
+  .max-h-app {
+    max-height: 100vh;
+    max-height: var(--app-height, 100dvh);
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .mobile-scroll {
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  .mobile-bottom-nav-spacer {
+    height: calc(4rem + env(safe-area-inset-bottom, 0px));
+    transition: height 180ms ease;
+  }
+  .keyboard-aware-bottom {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--keyboard-inset, 0px));
+  }
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+html.keyboard-open .mobile-bottom-nav {
+  transform: translateY(110%) !important;
+  pointer-events: none;
+}
+
+html.keyboard-open .mobile-bottom-nav-spacer {
+  height: 0;
 }
 
 /* ── Smooth page transitions ─────────────────────────────── */

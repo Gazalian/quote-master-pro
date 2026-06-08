@@ -34,6 +34,17 @@ export interface QuoteDraft {
   clarifyingQuestions?: string[];
 }
 
+export interface QuoteContext {
+  ref?: string;
+  client?: string;
+  description?: string;
+  groups?: QuoteGroup[];
+  grandTotal?: number;
+  templateStyle?: TemplateStyle;
+  status?: QuoteStatus;
+  version?: number;
+}
+
 export interface RegionalPriceEntry {
   material_id: string;
   material_name: string;

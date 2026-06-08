@@ -124,9 +124,9 @@ const BrandPage = () => {
         setSaveStatus("saved");
         // Fade the "Saved" pill after 2s
         setTimeout(() => setSaveStatus((s) => (s === "saved" ? "idle" : s)), 2000);
-      } catch (e: any) {
+      } catch (e: unknown) {
         setSaveStatus("error");
-        toast.error(e?.message ?? "Failed to save brand settings");
+        toast.error(e instanceof Error ? e.message : "Failed to save brand settings");
       }
     }, AUTOSAVE_DELAY_MS);
 
@@ -354,7 +354,7 @@ const PageShell = ({
   rightSlot?: React.ReactNode;
   children: React.ReactNode;
 }) => (
-  <div className="flex flex-col h-full bg-background">
+  <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background">
     <div className="px-5 lg:px-8 pt-5 pb-3 bg-card/60 backdrop-blur-md shrink-0 border-b border-border/50 sticky top-0 z-10">
       <div className="flex items-start justify-between gap-4">
         <div>
@@ -366,7 +366,7 @@ const PageShell = ({
         <div className="pt-1">{rightSlot}</div>
       </div>
     </div>
-    <div className="flex-1 overflow-y-auto px-4 lg:px-8 py-5">
+    <div className="mobile-scroll flex-1 px-4 lg:px-8 py-5">
       <div className="max-w-5xl mx-auto">{children}</div>
     </div>
   </div>

@@ -6,7 +6,7 @@
     <title>OtoQuote AI – Professional Quotations for Nigerian Tradespeople</title>
     <meta name="description" content="Generate, edit, and share professional quotations via AI. Built for Nigerian electricians, plumbers, and builders." />
     <meta name="author" content="OtoQuote" />
-    <meta name="theme-color" content="#0f8a6e" />
+    <meta name="theme-color" content="#0056D2" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="OtoQuote" />
@@ -16,13 +16,28 @@
     <meta property="og:description" content="AI-powered quotation app for Nigerian tradespeople" />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary" />
-    <!-- iOS Safari: fix 100vh including URL bar. Sets --app-height to the real visible height. -->
+    <!-- Mobile/PWA viewport: keep app chrome synced with browser bars and keyboard. -->
     <script>
       function setAppHeight() {
-        document.documentElement.style.setProperty('--app-height', window.innerHeight + 'px');
+        var root = document.documentElement;
+        var viewport = window.visualViewport;
+        var height = viewport ? viewport.height : window.innerHeight;
+        var keyboardInset = viewport
+          ? Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)
+          : 0;
+
+        root.style.setProperty('--app-height', height + 'px');
+        root.style.setProperty('--visual-viewport-height', height + 'px');
+        root.style.setProperty('--keyboard-inset', keyboardInset + 'px');
+        root.classList.toggle('keyboard-open', keyboardInset > 80);
       }
       setAppHeight();
-      window.addEventListener('resize', setAppHeight);
+      window.addEventListener('resize', setAppHeight, { passive: true });
+      window.addEventListener('orientationchange', setAppHeight, { passive: true });
+      if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', setAppHeight, { passive: true });
+        window.visualViewport.addEventListener('scroll', setAppHeight, { passive: true });
+      }
     </script>
   </head>
   <body>

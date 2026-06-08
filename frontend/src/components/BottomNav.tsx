@@ -55,7 +55,7 @@ export const BottomNav = () => {
 
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-50 lg:hidden transition-transform duration-300 ease-in-out"
+      className="mobile-bottom-nav fixed bottom-0 left-0 right-0 z-50 lg:hidden transition-transform duration-300 ease-in-out"
       style={{
         transform: visible ? "translateY(0)" : "translateY(100%)",
         // Respect iPhone home-bar / notch safe area

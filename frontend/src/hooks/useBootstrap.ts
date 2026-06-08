@@ -2,8 +2,29 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/apiClient';
 import { useAuth } from '@/lib/AuthContext';
 
+export interface ProfilePayload {
+  id?: string;
+  company_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  whatsapp?: string | null;
+  address?: string | null;
+  contact_person?: string | null;
+  cac_number?: string | null;
+  logo_url?: string | null;
+  brand_primary_color?: string | null;
+  brand_secondary_color?: string | null;
+  bank_name?: string | null;
+  account_name?: string | null;
+  account_number?: string | null;
+  default_payment_terms?: string | null;
+  full_name?: string | null;
+  trade_type?: string | null;
+  state_operation?: string | null;
+}
+
 export interface BootstrapPayload {
-  profile: Record<string, any> | null;
+  profile: ProfilePayload | null;
   preferences: {
     wastageRules: Record<string, number>;
     documentFlow: string[];
@@ -49,9 +70,9 @@ export function useBootstrap() {
     enabled: !!user,
     staleTime: 60_000,
     gcTime: 5 * 60_000,
-    retry: (failureCount, err: any) => {
+    retry: (failureCount, err: unknown) => {
       // Auth failures shouldn't retry — log out instead.
-      if (err?.status === 401) return false;
+      if ((err as { status?: number } | undefined)?.status === 401) return false;
       return failureCount < 1;
     },
   });

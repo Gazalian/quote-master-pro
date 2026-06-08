@@ -201,11 +201,11 @@ export const ModernTemplate = ({ quote, brand }: { quote: Quote; brand: BrandSet
                 { label: "UNIT PRICE", align: "right", width: "110px" },
                 { label: "QTY", align: "center", width: "50px" },
                 { label: "AMOUNT", align: "right", width: "110px" },
-              ].map(({ label, align, width }) => (
+              ].map(({ label, align, width }: { label: string; align: React.CSSProperties["textAlign"]; width: string }) => (
                 <th
                   key={label}
                   style={{
-                    textAlign: align as any,
+                    textAlign: align,
                     color: "#fff",
                     fontWeight: 700,
                     textTransform: "uppercase",

@@ -44,6 +44,10 @@ const ProfilePage = () => {
 
   const profile = bootstrap?.profile ?? null;
   const isSaving = updateProfile.isPending;
+  const profileId = profile?.id;
+  const profileFullName = profile?.full_name;
+  const profileTradeType = profile?.trade_type;
+  const profileStateOperation = profile?.state_operation;
 
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
@@ -53,13 +57,13 @@ const ProfilePage = () => {
   });
 
   useEffect(() => {
-    if (!profile) return;
+    if (!profileId && !profileFullName && !profileTradeType && !profileStateOperation) return;
     setFormData({
-      full_name: profile.full_name || "",
-      trade_type: profile.trade_type || "",
-      state_operation: profile.state_operation || "",
+      full_name: profileFullName || "",
+      trade_type: profileTradeType || "",
+      state_operation: profileStateOperation || "",
     });
-  }, [profile?.id, profile?.full_name, profile?.trade_type, profile?.state_operation]);
+  }, [profileId, profileFullName, profileTradeType, profileStateOperation]);
 
   const handleSaveProfile = async () => {
     try {
@@ -70,8 +74,8 @@ const ProfilePage = () => {
       });
       toast.success("Profile updated");
       setIsEditing(false);
-    } catch (e: any) {
-      toast.error(e?.message ?? "Failed to update profile");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to update profile");
     }
   };
 
@@ -92,8 +96,8 @@ const ProfilePage = () => {
       if (error) throw error;
       navigate("/");
       toast.success("Signed out");
-    } catch (e: any) {
-      toast.error(e?.message ?? "Failed to sign out");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to sign out");
     }
   };
 
@@ -109,7 +113,7 @@ const ProfilePage = () => {
   }, [profile?.full_name, user?.email]);
 
   return (
-    <div className="flex flex-col h-full bg-background">
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background">
       <div className="px-5 lg:px-8 pt-5 pb-3 bg-card/60 backdrop-blur-md shrink-0 border-b border-border/50 sticky top-0 z-10">
         <h1 className="text-[20px] lg:text-[22px] font-bold text-foreground tracking-tight">
           Profile & Settings
@@ -117,7 +121,7 @@ const ProfilePage = () => {
         <p className="text-xs text-muted-foreground mt-0.5">Manage your account details</p>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 lg:px-8 py-5">
+      <div className="mobile-scroll flex-1 px-4 lg:px-8 py-5">
         <div className="max-w-3xl mx-auto space-y-5">
           {/* ── Identity card ───────────────────────────────────────────── */}
           {loadingProfile && !profile ? (
@@ -175,7 +179,7 @@ const ProfilePage = () => {
               !isEditing ? (
                 <button
                   onClick={() => setIsEditing(true)}
-                  className="flex items-center gap-1.5 text-primary text-xs font-bold hover:bg-primary/10 px-3 py-2 rounded-lg transition-colors min-h-[36px]"
+                  className="flex items-center gap-1.5 text-primary text-xs font-bold hover:bg-primary/10 px-3 py-2 rounded-lg transition-colors min-h-[44px]"
                 >
                   <Pencil size={12} />
                   Edit
@@ -184,7 +188,7 @@ const ProfilePage = () => {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={handleCancel}
-                    className="flex items-center gap-1 text-muted-foreground text-xs font-semibold hover:bg-secondary px-3 py-2 rounded-lg transition-colors min-h-[36px]"
+                    className="flex items-center gap-1 text-muted-foreground text-xs font-semibold hover:bg-secondary px-3 py-2 rounded-lg transition-colors min-h-[44px]"
                   >
                     <X size={12} />
                     Cancel
@@ -192,7 +196,7 @@ const ProfilePage = () => {
                   <button
                     onClick={handleSaveProfile}
                     disabled={isSaving}
-                    className="flex items-center gap-1.5 bg-primary text-primary-foreground text-xs font-bold px-3 py-2 rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-60 min-h-[36px]"
+                    className="flex items-center gap-1.5 bg-primary text-primary-foreground text-xs font-bold px-3 py-2 rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-60 min-h-[44px]"
                   >
                     {isSaving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
                     Save

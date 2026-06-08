@@ -10,7 +10,7 @@ import { ChatSkeleton } from "@/components/skeletons";
 import { useIsDesktop } from "@/hooks/use-mobile";
 import { useBootstrap } from "@/hooks/useBootstrap";
 import { useSessions, useSessionMeta, useSessionMessages, useUpsertSession } from "@/hooks/useSessions";
-import { useGenerateQuote } from "@/hooks/useQuotes";
+import { useGenerateQuote, useUpdateQuote, type GeneratedQuoteDraft } from "@/hooks/useQuotes";
 import { useUploadChatImage } from "@/hooks/useImageUpload";
 import { useAuth } from "@/lib/AuthContext";
 import type { ChatMessage, Quote } from "@/types/quote";
@@ -82,6 +82,34 @@ const PROGRESS_STAGES = [
   "Finalising the quotation…",
 ] as const;
 
+function buildConversationHistory(messages: ChatMessage[]) {
+  return messages
+    .filter((m) => m.type === "text" && !m.id.endsWith("-ai-loading") && m.content.trim())
+    .map((m) => ({
+      role: m.role === "user" ? ("user" as const) : ("ai" as const),
+      content: m.content,
+    }));
+}
+
+function isSavedQuote(quote: Quote | null): quote is Quote {
+  return !!quote && !quote.isDraft && !!quote.id && !quote.id.startsWith("draft-");
+}
+
+function quotePatchFromQuote(quote: Quote): Record<string, unknown> {
+  return {
+    client_name: quote.client,
+    description: quote.description,
+    status: quote.status,
+    template_style: quote.templateStyle,
+    grand_total: quote.grandTotal,
+    data: { groups: quote.groups },
+  };
+}
+
+function getErrorMessage(err: unknown, fallback: string): string {
+  return err instanceof Error ? err.message : fallback;
+}
+
 const ChatPage = () => {
   const { user } = useAuth();
   const isDesktop = useIsDesktop();
@@ -90,6 +118,7 @@ const ChatPage = () => {
   const { data: sessionsList, isLoading: isLoadingSessions } = useSessions();
   const upsertSession = useUpsertSession();
   const generate = useGenerateQuote();
+  const updateQuote = useUpdateQuote();
   const uploadImage = useUploadChatImage();
   useBootstrap(); // prime the cache — referenced by QuoteCard
 
@@ -120,7 +149,11 @@ const ChatPage = () => {
   const { data: sessionMeta } = useSessionMeta(currentSessionId);
   const { data: messagePages, isFetching: isFetchingMessages } = useSessionMessages(currentSessionId);
   const loadedMessages = useMemo(
-    () => messagePages?.pages.flatMap((p) => p.messages as ChatMessage[]) ?? null,
+    () =>
+      messagePages?.pages
+        .slice()
+        .sort((a, b) => a.range.start - b.range.start)
+        .flatMap((p) => p.messages as ChatMessage[]) ?? null,
     [messagePages],
   );
 
@@ -133,11 +166,12 @@ const ChatPage = () => {
     setActiveQuote((sessionMeta.active_quote as Quote) ?? null);
     setQuoteHistory((sessionMeta.quote_history as Quote[]) ?? []);
     setPendingQuestions((sessionMeta.pending_questions as string[]) ?? []);
-  }, [sessionMeta?.id]);
+  }, [sessionMeta]);
 
   // Hydrate messages from the paginated endpoint
   useEffect(() => {
-    if (loadedMessages && loadedMessages.length > 0) setMessages(loadedMessages);
+    if (!loadedMessages) return;
+    setMessages(loadedMessages.length > 0 ? loadedMessages : initialMessages);
   }, [loadedMessages]);
 
   // ─── Cancel in-flight AI when user switches sessions ─────────────────────
@@ -174,7 +208,7 @@ const ChatPage = () => {
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
-  }, [messages, activeQuote, quoteHistory, pendingQuestions, currentSessionId, user]);
+  }, [messages, activeQuote, quoteHistory, pendingQuestions, currentSessionId, user, upsertSession]);
 
   // ─── Scroll to bottom on new messages (rAF: avoid layout-thrash) ──────────
   useEffect(() => {
@@ -213,14 +247,42 @@ const ChatPage = () => {
   const canSend = input.trim().length > 0 || selectedImages.length > 0;
 
   const conversationHistory = useMemo(
-    () =>
-      messages
-        .filter((m) => m.type === "text" && !m.id.endsWith("-ai-loading"))
-        .map((m) => ({
-          role: m.role === "user" ? ("user" as const) : ("ai" as const),
-          content: m.content,
-        })),
+    () => buildConversationHistory(messages),
     [messages],
+  );
+
+  const commitActiveQuote = useCallback((quote: Quote, replaceId?: string | null) => {
+    setActiveQuote(quote);
+    setQuoteHistory((prev) => {
+      const idx = prev.findIndex((q) => q.id === quote.id || (!!replaceId && q.id === replaceId));
+      if (idx === -1) return [...prev, quote];
+      const next = [...prev];
+      next[idx] = quote;
+      return next;
+    });
+  }, []);
+
+  const quoteFromDraft = useCallback(
+    (draft: GeneratedQuoteDraft, sessionId: string | null, previousQuote: Quote | null): Quote => ({
+      id: isSavedQuote(previousQuote) ? previousQuote.id : `draft-${newId()}`,
+      user_id: previousQuote?.user_id || user?.id || "",
+      ref: draft.ref,
+      date:
+        previousQuote?.date ??
+        new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
+      client: draft.client,
+      description: draft.description,
+      groups: draft.groups,
+      grandTotal: draft.grandTotal,
+      status: previousQuote?.status ?? "APPROVED",
+      templateStyle: draft.templateStyle ?? previousQuote?.templateStyle ?? "modern",
+      isDraft: isSavedQuote(previousQuote) ? undefined : true,
+      session_id: sessionId ?? previousQuote?.session_id,
+      version: previousQuote?.version ?? 1,
+      created_at: previousQuote?.created_at,
+      updated_at: previousQuote?.updated_at,
+    }),
+    [user?.id],
   );
 
   // ─── Generate ─────────────────────────────────────────────────────────────
@@ -302,36 +364,29 @@ const ChatPage = () => {
     abortRef.current?.abort();
     const ac = new AbortController();
     abortRef.current = ac;
+    const quoteBeforeRequest = activeQuote;
 
     try {
       const res = await generate.mutateAsync({
         userMessage: prompt,
         sessionId,
         conversationHistory,
+        currentQuote: quoteBeforeRequest,
         pendingQuestions,
         images: apiImages,
         signal: ac.signal,
       });
 
       const draft = res.draft;
-      const generated: Quote = {
-        id: `draft-${newId()}`,
-        user_id: user?.id ?? "",
-        ref: draft.ref,
-        date: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
-        client: draft.client,
-        description: draft.description,
-        groups: draft.groups,
-        grandTotal: draft.grandTotal,
-        status: "APPROVED",
-        templateStyle: draft.templateStyle ?? "modern",
-        isDraft: true,
-        session_id: sessionId,
-        version: 1,
-      };
+      const generated = quoteFromDraft(draft, sessionId, quoteBeforeRequest);
+      if (isSavedQuote(quoteBeforeRequest)) {
+        await updateQuote.mutateAsync({
+          id: quoteBeforeRequest.id,
+          patch: quotePatchFromQuote(generated),
+        });
+      }
 
-      setActiveQuote(generated);
-      setQuoteHistory((prev) => [...prev, generated]);
+      commitActiveQuote(generated, isSavedQuote(quoteBeforeRequest) ? quoteBeforeRequest.id : null);
       setPendingQuestions((draft.clarifyingQuestions ?? []).slice(0, 2));
 
       setMessages((prev) => {
@@ -366,15 +421,15 @@ const ChatPage = () => {
         return [...next, ...aiBubbles];
       });
 
-      toast.success("Quote generated");
-    } catch (err: any) {
-      if (err?.name === "AbortError" || ac.signal.aborted) {
+      toast.success(isSavedQuote(quoteBeforeRequest) ? "Quote updated" : "Quote generated");
+    } catch (err: unknown) {
+      if ((err instanceof Error && err.name === "AbortError") || ac.signal.aborted) {
         setMessages((prev) => prev.filter((m) => !m.id.endsWith("-ai-loading")));
         toast.info("Cancelled");
         return;
       }
       console.error("Quote generation error:", err);
-      toast.error(err?.message ?? "Failed to generate quote");
+      toast.error(getErrorMessage(err, "Failed to generate quote"));
       setMessages((prev) => {
         const next = prev.filter((m) => !m.id.endsWith("-ai-loading"));
         return [
@@ -382,7 +437,7 @@ const ChatPage = () => {
           {
             id: newId(),
             role: "ai",
-            content: `Sorry — that didn't work. ${err?.message ?? "Please try again."}`,
+            content: `Sorry — that didn't work. ${getErrorMessage(err, "Please try again.")}`,
             type: "text",
           },
         ];
@@ -390,7 +445,7 @@ const ChatPage = () => {
     }
   }, [
     input, currentSessionId, selectedImages, conversationHistory, pendingQuestions,
-    isDesktop, user, generate, uploadImage,
+    activeQuote, isDesktop, user, generate, uploadImage, updateQuote, quoteFromDraft, commitActiveQuote,
   ]);
 
   const handleCancelGenerate = useCallback(() => {
@@ -403,73 +458,75 @@ const ChatPage = () => {
       const newPrompt = editContent;
       setEditingMessageId(null);
 
-      setMessages((prev) => {
-        const idx = prev.findIndex((m) => m.id === id);
-        if (idx === -1) return prev;
-        const next = [...prev];
-        next[idx] = { ...next[idx], content: newPrompt, isEdited: true };
-        next.push({
+      const editedMessages = messages.map((m) =>
+        m.id === id ? { ...m, content: newPrompt, isEdited: true } : m,
+      );
+
+      setMessages([
+        ...editedMessages,
+        {
           id: `${newId()}-ai-loading`,
           role: "ai",
-          content: "Understood! Updating the quote…",
+          content: "Understood! Updating the quote...",
           type: "text",
-        });
-        return next;
-      });
+        },
+      ]);
 
       abortRef.current?.abort();
       const ac = new AbortController();
       abortRef.current = ac;
+      const quoteBeforeRequest = activeQuote;
+      const editedConversationHistory = buildConversationHistory(editedMessages);
 
       try {
         const res = await generate.mutateAsync({
           userMessage: newPrompt,
           sessionId: currentSessionId,
-          conversationHistory,
+          conversationHistory: editedConversationHistory,
+          currentQuote: quoteBeforeRequest,
           pendingQuestions,
           signal: ac.signal,
         });
 
         const draft = res.draft;
-        const generated: Quote = {
-          id: `draft-${newId()}`,
-          user_id: user?.id ?? "",
-          ref: draft.ref,
-          date: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
-          client: draft.client,
-          description: draft.description,
-          groups: draft.groups,
-          grandTotal: draft.grandTotal,
-          status: "APPROVED",
-          templateStyle: draft.templateStyle ?? "modern",
-          isDraft: true,
-          session_id: currentSessionId ?? undefined,
-          version: (quoteHistory.length || 0) + 1,
-        };
+        const generated = quoteFromDraft(draft, currentSessionId, quoteBeforeRequest);
+        if (isSavedQuote(quoteBeforeRequest)) {
+          await updateQuote.mutateAsync({
+            id: quoteBeforeRequest.id,
+            patch: quotePatchFromQuote(generated),
+          });
+        }
 
-        setActiveQuote(generated);
-        setQuoteHistory((prev) => [...prev, generated]);
+        commitActiveQuote(generated, isSavedQuote(quoteBeforeRequest) ? quoteBeforeRequest.id : null);
         setPendingQuestions((draft.clarifyingQuestions ?? []).slice(0, 2));
 
         setMessages((prev) => {
           const next = prev.filter((m) => !m.id.endsWith("-ai-loading"));
+          const meta = {
+            timestamp: new Date().toISOString(),
+            user_id: user?.id,
+            session_id: currentSessionId ?? undefined,
+          };
           return [
             ...next,
-            { id: newId(), role: "ai", content: "Updated based on your new instructions.", type: "text" },
-            { id: newId(), role: "ai", content: "", type: "quote" },
+            { id: newId(), role: "ai", content: "Updated based on your new instructions.", type: "text", ...meta },
+            { id: newId(), role: "ai", content: "", type: "quote", ...meta },
           ];
         });
         toast.success("Quote updated");
-      } catch (err: any) {
-        if (err?.name === "AbortError" || ac.signal.aborted) {
+      } catch (err: unknown) {
+        if ((err instanceof Error && err.name === "AbortError") || ac.signal.aborted) {
           setMessages((prev) => prev.filter((m) => !m.id.endsWith("-ai-loading")));
           return;
         }
-        toast.error(err?.message ?? "Failed to update quote");
+        toast.error(getErrorMessage(err, "Failed to update quote"));
         setMessages((prev) => prev.filter((m) => !m.id.endsWith("-ai-loading")));
       }
     },
-    [editContent, currentSessionId, conversationHistory, pendingQuestions, quoteHistory, user, generate],
+    [
+      editContent, messages, activeQuote, currentSessionId, pendingQuestions, user,
+      generate, updateQuote, quoteFromDraft, commitActiveQuote,
+    ],
   );
 
   const startNewChat = useCallback(() => {
@@ -492,6 +549,10 @@ const ChatPage = () => {
   const onSwitchSession = useCallback((id: string) => {
     abortRef.current?.abort();
     setCurrentSessionId(id);
+    setMessages([]);
+    setActiveQuote(null);
+    setQuoteHistory([]);
+    setPendingQuestions([]);
   }, []);
 
   const handleFileSelect: React.ChangeEventHandler<HTMLInputElement> = (e) => {
@@ -516,12 +577,18 @@ const ChatPage = () => {
         </div>
       );
     }
-    return <QuoteCard quote={activeQuote} onQuoteSaved={(saved) => setActiveQuote(saved)} mode="chat" />;
-  }, [activeQuote]);
+    return (
+      <QuoteCard
+        quote={activeQuote}
+        onQuoteSaved={(saved) => commitActiveQuote(saved, activeQuote.id)}
+        mode="chat"
+      />
+    );
+  }, [activeQuote, commitActiveQuote]);
 
   // ─── Render: chat surface ────────────────────────────────────────────────
   const ChatContent = (
-    <div className="flex flex-col h-full bg-background relative overscroll-none">
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background relative overscroll-none">
       {!isDesktop && (
         <ChatHistoryDrawer
           open={drawerOpen}
@@ -535,25 +602,25 @@ const ChatPage = () => {
 
       {/* ── Mobile top bar ──────────────────────────────────────── */}
       {!isDesktop && (
-        <div className="flex items-center justify-between px-4 h-14 bg-white border-b border-gray-100 shrink-0 shadow-sm lg:hidden">
-          <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between px-3 h-14 bg-white border-b border-gray-100 shrink-0 shadow-sm lg:hidden">
+          <div className="flex min-w-0 items-center gap-2">
             <button
               onClick={() => setDrawerOpen(true)}
-              className="w-11 h-11 -ml-2 flex items-center justify-center rounded-xl text-gray-600 hover:bg-gray-100 active:bg-gray-200 transition-colors"
+              className="touch-target -ml-1 flex items-center justify-center rounded-xl text-gray-600 hover:bg-gray-100 active:bg-gray-200 transition-colors"
               aria-label="Open chat history"
             >
               <Menu size={20} />
             </button>
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-[#0056D2] flex items-center justify-center">
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-[#0056D2] flex items-center justify-center shrink-0">
                 <span className="text-white text-[10px] font-black">OQ</span>
               </div>
-              <span className="font-semibold text-gray-900 text-[15px]">OtoQuote AI</span>
+              <span className="truncate font-semibold text-gray-900 text-[15px]">OtoQuote AI</span>
             </div>
           </div>
           <button
             onClick={startNewChat}
-            className="w-11 h-11 -mr-2 flex items-center justify-center rounded-xl text-[#0056D2] hover:bg-blue-50 active:bg-blue-100 transition-colors"
+            className="touch-target -mr-1 flex items-center justify-center rounded-xl text-[#0056D2] hover:bg-blue-50 active:bg-blue-100 transition-colors"
             title="New chat"
             aria-label="Start new chat"
           >
@@ -567,8 +634,8 @@ const ChatPage = () => {
       {/* ── Chat body ───────────────────────────────────────────── */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto overscroll-contain bg-[#f0f2f5] px-3 py-4 space-y-3"
-        style={{ WebkitOverflowScrolling: "touch" }}
+        className="mobile-scroll flex-1 bg-[#f0f2f5] px-3 py-4 space-y-3"
+        style={{ scrollPaddingBottom: "calc(7rem + env(safe-area-inset-bottom, 0px))" }}
       >
         {showChatSkeleton ? (
           <ChatSkeleton />
@@ -595,8 +662,7 @@ const ChatPage = () => {
 
       {/* ── Input bar ───────────────────────────────────────────── */}
       <div
-        className="px-3 pt-3 bg-white border-t border-gray-100 shrink-0"
-        style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom, 0px))" }}
+        className="keyboard-aware-bottom px-3 pt-3 bg-white border-t border-gray-100 shrink-0"
       >
         {selectedImages.length > 0 && (
           <div className="flex gap-2 flex-wrap mb-2 px-1">
@@ -621,7 +687,7 @@ const ChatPage = () => {
           </div>
         )}
 
-        <div className="flex items-end gap-2">
+        <div className="flex min-w-0 items-end gap-2">
           {/* Attach */}
           <div className="relative shrink-0">
             <input
@@ -635,7 +701,7 @@ const ChatPage = () => {
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={generate.isPending}
-              className="w-11 h-11 flex items-center justify-center rounded-2xl bg-gray-100 text-gray-600 hover:bg-gray-200 active:bg-gray-300 transition-colors disabled:opacity-40"
+              className="touch-target flex items-center justify-center rounded-2xl bg-gray-100 text-gray-600 hover:bg-gray-200 active:bg-gray-300 transition-colors disabled:opacity-40"
               title="Attach image"
               aria-label="Attach image"
             >
@@ -649,7 +715,7 @@ const ChatPage = () => {
           </div>
 
           {/* Composer */}
-          <div className="flex-1 flex items-end bg-gray-100 rounded-[22px] px-4 py-2 border border-transparent focus-within:border-[#0056D2]/30 focus-within:bg-white transition-all duration-200">
+          <div className="min-w-0 flex-1 flex items-end bg-gray-100 rounded-[22px] px-4 py-2 border border-transparent focus-within:border-[#0056D2]/30 focus-within:bg-white transition-all duration-200">
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -660,7 +726,7 @@ const ChatPage = () => {
                 }
               }}
               placeholder="Describe the job…"
-              className="flex-1 bg-transparent text-gray-900 placeholder:text-gray-400 outline-none resize-none"
+              className="min-w-0 flex-1 bg-transparent text-gray-900 placeholder:text-gray-400 outline-none resize-none"
               disabled={generate.isPending}
               rows={1}
               style={{ minHeight: "24px", maxHeight: "120px", lineHeight: "1.5", fontSize: "16px" }}
@@ -677,7 +743,7 @@ const ChatPage = () => {
           {generate.isPending ? (
             <button
               onClick={handleCancelGenerate}
-              className="w-11 h-11 shrink-0 flex items-center justify-center bg-destructive/10 text-destructive rounded-full shadow-sm hover:bg-destructive/20 active:scale-95 transition-all"
+              className="touch-target shrink-0 flex items-center justify-center bg-destructive/10 text-destructive rounded-full shadow-sm hover:bg-destructive/20 active:scale-95 transition-all"
               title="Cancel"
               aria-label="Cancel generation"
             >
@@ -686,7 +752,7 @@ const ChatPage = () => {
           ) : canSend ? (
             <button
               onClick={handleSend}
-              className="w-11 h-11 shrink-0 flex items-center justify-center bg-[#0056D2] text-white rounded-full shadow-md hover:bg-[#0056D2]/90 active:scale-95 transition-all"
+              className="touch-target shrink-0 flex items-center justify-center bg-[#0056D2] text-white rounded-full shadow-md hover:bg-[#0056D2]/90 active:scale-95 transition-all"
               aria-label="Send message"
             >
               <Send size={17} className="ml-0.5" />
@@ -698,7 +764,7 @@ const ChatPage = () => {
                   description: "Type your message for now.",
                 })
               }
-              className="w-11 h-11 shrink-0 flex items-center justify-center bg-gray-100 text-gray-600 rounded-full hover:bg-gray-200 active:bg-gray-300 transition-colors"
+              className="touch-target shrink-0 flex items-center justify-center bg-gray-100 text-gray-600 rounded-full hover:bg-gray-200 active:bg-gray-300 transition-colors"
               aria-label="Voice input"
             >
               <Mic size={19} />
@@ -761,10 +827,7 @@ const ChatPage = () => {
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 pb-12">
                 <QuoteCard
                   quote={activeQuote}
-                  onQuoteSaved={(saved) => {
-                    setActiveQuote(saved);
-                    setQuoteHistory((prev) => prev.map((q) => (q.id === saved.id ? saved : q)));
-                  }}
+                  onQuoteSaved={(saved) => commitActiveQuote(saved, activeQuote.id)}
                   mode="chat"
                 />
               </div>

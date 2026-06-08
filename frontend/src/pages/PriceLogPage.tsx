@@ -71,8 +71,8 @@ const PriceLogPage = () => {
       }
       setEditing(null);
       setIsAdding(false);
-    } catch (e: any) {
-      toast.error(e?.message ?? "Failed to save price");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to save price");
     }
   };
 
@@ -80,8 +80,8 @@ const PriceLogPage = () => {
     try {
       await remove.mutateAsync(id);
       toast.success("Item deleted");
-    } catch (e: any) {
-      toast.error(e?.message ?? "Failed to delete");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to delete");
     }
   };
 
@@ -100,14 +100,15 @@ const PriceLogPage = () => {
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden">
       <div className="px-4 pt-4 pb-2 bg-card shrink-0">
         <div className="flex items-center justify-between mb-3">
           <h1 className="text-xl font-bold text-foreground">Price Log</h1>
           {tab !== "AI SUGGESTIONS" && (
             <button
               onClick={() => setIsAdding(true)}
-              className="bg-primary text-primary-foreground w-10 h-10 rounded-full flex items-center justify-center"
+              className="touch-target bg-primary text-primary-foreground rounded-full flex items-center justify-center"
+              aria-label="Add price"
             >
               <Plus size={20} />
             </button>
@@ -119,15 +120,15 @@ const PriceLogPage = () => {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search prices..."
-            className="w-full bg-secondary rounded-lg pl-10 pr-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground outline-none"
+            className="w-full bg-secondary rounded-lg pl-10 pr-4 py-2.5 text-base sm:text-sm text-foreground placeholder:text-muted-foreground outline-none"
           />
         </div>
-        <div className="flex gap-1">
+        <div className="grid grid-cols-3 gap-1">
           {tabs.map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`flex-1 py-2 text-xs font-medium rounded-lg transition-colors ${
+              className={`min-h-[40px] px-1 py-2 text-xs font-medium rounded-lg transition-colors ${
                 tab === t ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"
               }`}
             >
@@ -137,7 +138,7 @@ const PriceLogPage = () => {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+      <div className="mobile-scroll flex-1 px-4 py-3 space-y-2">
         {isLoading ? (
           <PriceRowSkeleton />
         ) : tab === "AI SUGGESTIONS" ? (
@@ -164,10 +165,10 @@ const PriceLogPage = () => {
                     <p className="text-[10px] text-muted-foreground mt-0.5">{item.lastUpdated}</p>
                   </div>
                   <div className="flex flex-col gap-1">
-                    <button onClick={() => setEditing(item)} className="p-1.5 text-muted-foreground hover:text-primary">
+                    <button onClick={() => setEditing(item)} className="touch-target text-muted-foreground hover:text-primary flex items-center justify-center rounded-lg" aria-label={`Edit ${item.name}`}>
                       <Edit2 size={14} />
                     </button>
-                    <button onClick={() => handleDelete(item.id)} className="p-1.5 text-muted-foreground hover:text-destructive">
+                    <button onClick={() => handleDelete(item.id)} className="touch-target text-muted-foreground hover:text-destructive flex items-center justify-center rounded-lg" aria-label={`Delete ${item.name}`}>
                       <Trash2 size={14} />
                     </button>
                   </div>

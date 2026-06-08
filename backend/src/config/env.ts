@@ -80,10 +80,8 @@ const schema = z
 const parsed = schema.safeParse(process.env);
 if (!parsed.success) {
   // Fail fast at boot. Don't start a server with missing secrets.
-  // eslint-disable-next-line no-console
   console.error('[env] Invalid environment configuration:');
   for (const issue of parsed.error.issues) {
-    // eslint-disable-next-line no-console
     console.error(`  - ${issue.path.join('.')}: ${issue.message}`);
   }
   process.exit(1);

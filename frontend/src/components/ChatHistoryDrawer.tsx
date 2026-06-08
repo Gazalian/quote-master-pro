@@ -12,16 +12,28 @@ interface Props {
   onNewChat?: () => void;
 }
 
+function formatSessionDate(session: ChatSession): string {
+  const rawDate = session.date ?? session.updated_at ?? session.created_at;
+  const date = rawDate ? new Date(rawDate) : null;
+  if (!date || Number.isNaN(date.getTime())) return "";
+
+  return date.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+  });
+}
+
 export const ChatHistoryDrawer = ({ open = true, variant = "drawer", sessions = [], isLoading = false, onClose, onSelectSession, onNewChat }: Props) => {
   const innerContent = (
-    <div className="flex flex-col h-full">
+    <div className="flex h-full min-h-0 flex-col">
       {/* Header */}
       <div className="flex items-center justify-between px-4 h-14 border-b border-border shrink-0">
         <h2 className="font-bold text-foreground">Chat History</h2>
         {variant === "drawer" && onClose && (
           <button
             onClick={onClose}
-            className="w-9 h-9 flex items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
+            className="touch-target flex items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
+            aria-label="Close chat history"
           >
             <X size={20} />
           </button>
@@ -40,37 +52,44 @@ export const ChatHistoryDrawer = ({ open = true, variant = "drawer", sessions = 
       </div>
 
       {/* Sessions list */}
-      <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1">
+      <div className="mobile-scroll flex-1 px-3 py-2 space-y-1">
         {isLoading ? (
           <SessionListSkeleton />
         ) : sessions.length === 0 ? (
           <p className="text-xs text-muted-foreground text-center py-8 px-4">
             No chats yet. Start a new conversation to generate your first quote.
           </p>
-        ) : sessions.map((session) => (
-          <button
-            key={session.id}
-            onClick={() => { onSelectSession?.(session.id); onClose?.(); }}
-            className="w-full text-left px-3 py-3 rounded-xl hover:bg-muted active:bg-muted/80 transition-colors group relative min-h-[60px]"
-          >
-            <div className="flex items-start gap-3">
-              <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-                <MessageSquare size={16} className="text-primary" />
+        ) : sessions.map((session) => {
+          const date = formatSessionDate(session);
+          const preview = session.last_message || session.preview || session.client || "No client";
+
+          return (
+            <button
+              key={session.id}
+              onClick={() => { onSelectSession?.(session.id); onClose?.(); }}
+              className="w-full text-left px-3 py-3 rounded-xl hover:bg-muted active:bg-muted/80 transition-colors group relative min-h-[60px]"
+            >
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                  <MessageSquare size={16} className="text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">{session.title}</p>
+                  <p className="text-xs text-muted-foreground truncate">{preview}</p>
+                </div>
+                {date && (
+                  <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground shrink-0 mt-1">{date}</span>
+                )}
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">{session.title}</p>
-                <p className="text-xs text-muted-foreground truncate">{session.client || 'No client'}</p>
-              </div>
-              <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground shrink-0 mt-1">{session.date}</span>
-            </div>
-          </button>
-        ))}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
 
   if (variant === "sidebar") {
-    return <div className="h-full bg-card">{innerContent}</div>;
+    return <div className="h-full min-h-0 bg-card">{innerContent}</div>;
   }
   return (
     <>
@@ -84,7 +103,7 @@ export const ChatHistoryDrawer = ({ open = true, variant = "drawer", sessions = 
 
       {/* Drawer */}
       <div
-        className={`fixed inset-y-0 left-0 z-50 w-[85%] max-w-[320px] bg-card shadow-xl transform transition-transform duration-200 ease-out ${
+        className={`fixed left-0 top-0 z-50 h-app w-[min(88vw,320px)] max-w-full bg-card shadow-xl transform transition-transform duration-200 ease-out pt-safe pb-safe ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >

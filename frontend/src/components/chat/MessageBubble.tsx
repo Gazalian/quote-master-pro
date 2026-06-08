@@ -40,7 +40,7 @@ function MessageBubbleImpl({
   if (msg.type === "quote" && isDesktop) {
     return (
       <Row align="left">
-        <div className="max-w-[75%] px-4 py-3 rounded-2xl rounded-bl-sm text-[14px] bg-white text-gray-700 shadow-sm border border-gray-100">
+        <div className="max-w-[min(75%,34rem)] px-4 py-3 rounded-2xl rounded-bl-sm text-[14px] bg-white text-gray-700 shadow-sm border border-gray-100">
           Quote generated and updated in the preview panel. 👉
         </div>
       </Row>
@@ -50,7 +50,7 @@ function MessageBubbleImpl({
   if (msg.type === "image") {
     return (
       <Row align={msg.role === "user" ? "right" : "left"}>
-        <div className="max-w-[65%]">
+        <div className="max-w-[min(78%,22rem)]">
           <img
             src={msg.imageUrl}
             alt="Uploaded"
@@ -81,14 +81,14 @@ function MessageBubbleImpl({
   return (
     <Row align={msg.role === "user" ? "right" : "left"} showAvatar={msg.role === "ai"}>
       <div
-        className={`max-w-[78%] rounded-2xl text-[14px] leading-relaxed relative ${
+        className={`max-w-[min(82%,34rem)] min-w-0 rounded-2xl text-[14px] leading-relaxed relative break-words ${
           msg.role === "user"
             ? "bg-[#0056D2] text-white shadow-sm rounded-br-sm px-4 py-3"
             : "bg-white text-gray-800 shadow-sm border border-gray-100 rounded-bl-sm px-4 py-3"
         }`}
       >
         {editing ? (
-          <div className="flex flex-col gap-2 min-w-[220px]">
+          <div className="flex w-[min(72vw,28rem)] flex-col gap-2">
             <textarea
               value={editValue}
               onChange={(e) => setEditValue(e.target.value)}

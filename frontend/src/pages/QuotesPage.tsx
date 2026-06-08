@@ -3,7 +3,8 @@ import { ChevronLeft, Search, MoreVertical, Loader2 } from "lucide-react";
 import { QuoteCard } from "@/components/QuoteCard";
 import { QuoteRowSkeleton } from "@/components/skeletons";
 import { toast } from "sonner";
-import type { Quote, QuoteStatus } from "@/types/quote";
+import type { Quote, QuoteStatus, TemplateStyle } from "@/types/quote";
+import { api } from "@/lib/apiClient";
 import {
   useQuotesList,
   useQuote,
@@ -20,6 +21,10 @@ const statusStyles: Record<QuoteStatus, string> = {
 };
 
 const filters: (QuoteStatus | "ALL")[] = ["ALL", "APPROVED", "INVOICED", "ARCHIVED"];
+const isTemplateStyle = (value: string): value is TemplateStyle =>
+  value === "classic" || value === "modern" || value === "minimal";
+const toTemplateStyle = (value: string | undefined | null): TemplateStyle =>
+  value && isTemplateStyle(value) ? value : "classic";
 const formatNGN = (amount: number) => `₦${amount.toLocaleString("en-NG")}`;
 
 // Maps the lightweight list row → a full-ish Quote for QuoteCard (used only
@@ -39,7 +44,7 @@ function rowToQuote(row: QuoteListRow): Quote {
     groups: [],
     grandTotal: Number(row.grand_total),
     status: row.status,
-    templateStyle: (row.template_style as any) ?? "classic",
+    templateStyle: toTemplateStyle(row.template_style),
     version: row.version,
     session_id: row.session_id ?? undefined,
     created_at: row.created_at,
@@ -107,26 +112,25 @@ const QuotesPage = () => {
     try {
       // Need the full quote (with data.groups) — fetch then re-save through
       // the atomic backend RPC so points are correctly accounted for.
-      const detail = (await import("@/lib/apiClient")).api;
-      const full = await detail.get<any>(`/api/quotes/${row.id}`);
+      const full = await api.get<{ data?: { groups?: Quote["groups"] } }>(`/api/quotes/${row.id}`);
       const newRef = `OQ-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)
         .toString()
         .padStart(4, "0")}`;
       await saveQuote.mutateAsync({
         sessionId: null,
-        templateStyle: row.template_style as any,
+        templateStyle: toTemplateStyle(row.template_style),
         draft: {
           ref: newRef,
           client: row.client_name,
           description: row.description,
           groups: full?.data?.groups ?? [],
           grandTotal: Number(row.grand_total),
-          templateStyle: row.template_style as any,
+          templateStyle: toTemplateStyle(row.template_style),
         },
       });
       toast.success("Quote duplicated!");
-    } catch (e: any) {
-      toast.error(`Failed to duplicate: ${e?.message ?? "unknown error"}`);
+    } catch (e: unknown) {
+      toast.error(`Failed to duplicate: ${e instanceof Error ? e.message : "unknown error"}`);
     } finally {
       setOpenDropdownId(null);
     }
@@ -149,7 +153,7 @@ const QuotesPage = () => {
           groups: selectedQuoteFull.data?.groups ?? [],
           grandTotal: Number(selectedQuoteFull.grand_total),
           status: selectedQuoteFull.status,
-          templateStyle: selectedQuoteFull.template_style ?? "classic",
+          templateStyle: toTemplateStyle(selectedQuoteFull.template_style),
           version: selectedQuoteFull.version,
           session_id: selectedQuoteFull.session_id ?? undefined,
           created_at: selectedQuoteFull.created_at,
@@ -160,9 +164,9 @@ const QuotesPage = () => {
       : null;
 
     return (
-      <div className="flex flex-col h-full bg-background relative">
+      <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background relative">
         <div className="flex items-center gap-3 px-4 py-4 bg-card shrink-0 border-b border-border shadow-sm">
-          <button onClick={() => setSelectedId(null)} className="text-muted-foreground hover:text-foreground">
+          <button onClick={() => setSelectedId(null)} className="touch-target text-muted-foreground hover:text-foreground flex items-center justify-center rounded-lg" aria-label="Back to quotations">
             <ChevronLeft size={24} />
           </button>
           <div className="min-w-0">
@@ -170,7 +174,7 @@ const QuotesPage = () => {
             <p className="text-xs text-muted-foreground font-mono">{displayQuote?.ref}</p>
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-secondary/10">
+        <div className="mobile-scroll flex-1 p-3 sm:p-4 md:p-6 bg-secondary/10">
           <div className="max-w-4xl mx-auto">
             {displayQuote ? (
               <QuoteCard quote={displayQuote} mode="dashboard" />
@@ -186,7 +190,7 @@ const QuotesPage = () => {
   }
 
   return (
-    <div className="flex flex-col h-full bg-background relative" onClick={() => setOpenDropdownId(null)}>
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background relative" onClick={() => setOpenDropdownId(null)}>
       <div className="px-4 py-6 bg-card shrink-0 border-b border-border shadow-sm">
         <h1 className="text-2xl font-bold text-foreground mb-4">Quotations</h1>
         <div className="relative mb-4">
@@ -195,7 +199,7 @@ const QuotesPage = () => {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by client, ref, or description..."
-            className="w-full bg-white rounded-xl pl-10 pr-4 py-3 text-sm text-gray-900 placeholder:text-gray-500 outline-none border border-border focus:border-primary transition-colors shadow-sm"
+            className="w-full bg-white rounded-xl pl-10 pr-4 py-3 text-base sm:text-sm text-gray-900 placeholder:text-gray-500 outline-none border border-border focus:border-primary transition-colors shadow-sm"
           />
         </div>
         <div className="flex gap-2 overflow-x-auto pb-1 hide-scrollbar">
@@ -215,7 +219,7 @@ const QuotesPage = () => {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 bg-secondary/10">
+      <div className="mobile-scroll flex-1 p-3 sm:p-4 md:p-6 space-y-4 bg-secondary/10">
         {isLoading ? (
           <QuoteRowSkeleton />
         ) : filtered.length === 0 ? (
@@ -247,7 +251,8 @@ const QuotesPage = () => {
                       e.stopPropagation();
                       setOpenDropdownId(openDropdownId === q.id ? null : q.id);
                     }}
-                    className="text-muted-foreground hover:bg-secondary hover:text-foreground p-1.5 rounded-lg transition-colors opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
+                    className="touch-target text-muted-foreground hover:bg-secondary hover:text-foreground rounded-lg transition-colors opacity-100 lg:opacity-0 lg:group-hover:opacity-100 flex items-center justify-center"
+                    aria-label={`Open actions for ${q.ref}`}
                   >
                     <MoreVertical size={20} />
                   </button>
