@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Money } from "@/lib/currency";
 import { Search, Plus, Edit2, Trash2 } from "lucide-react";
 import { PriceLogEditor } from "@/components/PriceLogEditor";
 import { PriceRowSkeleton } from "@/components/skeletons";
@@ -13,7 +14,6 @@ import {
 
 type PriceTab = "MATERIALS" | "LABOUR" | "AI SUGGESTIONS";
 const tabs: PriceTab[] = ["MATERIALS", "LABOUR", "AI SUGGESTIONS"];
-const formatNGN = (amount: number) => `₦${amount.toLocaleString("en-NG")}`;
 
 const PriceLogPage = () => {
   const [tab, setTab] = useState<PriceTab>("MATERIALS");
@@ -132,7 +132,7 @@ const PriceLogPage = () => {
                 tab === t ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"
               }`}
             >
-              {t === "AI SUGGESTIONS" ? "AI Sugg." : t.charAt(0) + t.slice(1).toLowerCase()}
+              {t === "AI SUGGESTIONS" ? "AI prices" : t.charAt(0) + t.slice(1).toLowerCase()}
             </button>
           ))}
         </div>
@@ -142,36 +142,56 @@ const PriceLogPage = () => {
         {isLoading ? (
           <PriceRowSkeleton />
         ) : tab === "AI SUGGESTIONS" ? (
-          <p className="text-center text-muted-foreground text-sm mt-8">
-            AI suggestions will appear here after generating quotes
-          </p>
+          <div className="mt-8 rounded-xl border border-dashed border-border bg-card px-5 py-8 text-center">
+            <p className="text-sm font-semibold text-foreground">Not available yet</p>
+            <p className="mx-auto mt-1.5 max-w-xs text-xs leading-relaxed text-muted-foreground">
+              This will collect the prices OtoQuote estimated for you, so you can confirm the ones
+              that were right and correct the ones that weren't. For now, save prices from the quote
+              editor or with the + button.
+            </p>
+          </div>
         ) : filtered.length === 0 ? (
           <p className="text-center text-muted-foreground text-sm mt-8">No items found</p>
         ) : (
           filtered.map((item) => (
-            <div key={item.id} className="bg-card rounded-xl p-3.5 border border-border">
-              <div className="flex items-start justify-between">
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm text-foreground">{item.name}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
+            <div
+              key={item.id}
+              className="rounded-xl border border-border bg-card px-3.5 py-2.5 transition-colors hover:border-border/80"
+            >
+              {/* One row, not three stacked blocks. The old layout put price,
+                  date and the two icon buttons in a right-hand column, which
+                  left an L-shaped void under the item name and made every row
+                  twice as tall as it needed to be. */}
+              <div className="flex items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-foreground">{item.name}</p>
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground">
                     {item.category ? `${item.category} · ` : ""}
                     {item.unit}
+                    {item.supplier ? ` · ${item.supplier}` : ""}
                   </p>
-                  {item.supplier && <p className="text-xs text-muted-foreground">{item.supplier}</p>}
                 </div>
-                <div className="flex items-center gap-2 shrink-0 ml-3">
-                  <div className="text-right">
-                    <p className="font-bold text-sm text-primary">{formatNGN(item.unitPrice)}</p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">{item.lastUpdated}</p>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <button onClick={() => setEditing(item)} className="touch-target text-muted-foreground hover:text-primary flex items-center justify-center rounded-lg" aria-label={`Edit ${item.name}`}>
-                      <Edit2 size={14} />
-                    </button>
-                    <button onClick={() => handleDelete(item.id)} className="touch-target text-muted-foreground hover:text-destructive flex items-center justify-center rounded-lg" aria-label={`Delete ${item.name}`}>
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
+
+                <div className="shrink-0 text-right">
+                  <Money amount={item.unitPrice} className="text-sm font-bold text-primary" />
+                  <p className="text-[10px] text-muted-foreground">{item.lastUpdated}</p>
+                </div>
+
+                <div className="-mr-1.5 flex shrink-0 items-center">
+                  <button
+                    onClick={() => setEditing(item)}
+                    className="touch-target flex items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    aria-label={`Edit ${item.name}`}
+                  >
+                    <Edit2 size={15} />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(item.id)}
+                    className="touch-target flex items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive"
+                    aria-label={`Delete ${item.name}`}
+                  >
+                    <Trash2 size={15} />
+                  </button>
                 </div>
               </div>
             </div>

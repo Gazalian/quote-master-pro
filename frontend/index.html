@@ -3,19 +3,80 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>OtoQuote AI – Professional Quotations for Nigerian Tradespeople</title>
-    <meta name="description" content="Generate, edit, and share professional quotations via AI. Built for Nigerian electricians, plumbers, and builders." />
+
+    <title>OtoQuote AI — Construction Quotation Software for Nigerian Tradespeople</title>
+    <meta
+      name="description"
+      content="Describe a construction job in plain language and get a complete itemised quotation — materials, quantities, labour and the grand total in Naira. Built for Nigerian electricians, plumbers, builders, painters, tilers and carpenters. Edit any line, export a branded PDF, convert to an invoice. Free."
+    />
     <meta name="author" content="OtoQuote" />
     <meta name="theme-color" content="#0056D2" />
+    <link rel="canonical" href="__SITE_URL__/" />
+
+    <!-- PWA / iOS -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="OtoQuote" />
     <link rel="apple-touch-icon" href="/pwa-192x192.png" />
 
-    <meta property="og:title" content="OtoQuote AI" />
-    <meta property="og:description" content="AI-powered quotation app for Nigerian tradespeople" />
+    <!-- Fonts are self-hosted (@font-face lives in src/index.css). Preload the
+         two that draw above-the-fold text so they start downloading in
+         parallel with the CSS instead of after it. Archivo = display,
+         Inter = body, IBM Plex Mono = technical labels (not preloaded — it
+         only sets small labels, so swapping in late costs nothing). -->
+    <link rel="preload" as="font" type="font/woff2" href="/fonts/inter-400-700.woff2" crossorigin />
+    <link rel="preload" as="font" type="font/woff2" href="/fonts/archivo-700-800.woff2" crossorigin />
+
+    <!-- Open Graph -->
+    <meta property="og:site_name" content="OtoQuote AI" />
+    <meta property="og:title" content="Describe the job. Get the full quotation." />
+    <meta
+      property="og:description"
+      content="AI construction quotation software for Nigerian tradespeople. Materials, quantities and labour itemised in Naira — then edited, branded and exported as a PDF."
+    />
     <meta property="og:type" content="website" />
-    <meta name="twitter:card" content="summary" />
+    <meta property="og:url" content="__SITE_URL__/" />
+    <meta property="og:image" content="__SITE_URL__/screenshot.png" />
+    <meta property="og:image:alt" content="The OtoQuote chat screen showing an AI-generated electrical wiring quotation with itemised cable, consumer unit and labour costs in Naira." />
+    <meta property="og:locale" content="en_NG" />
+
+    <!-- Twitter/X -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Describe the job. Get the full quotation." />
+    <meta
+      name="twitter:description"
+      content="AI construction quotation software for Nigerian tradespeople. Materials, quantities and labour itemised in Naira."
+    />
+    <meta name="twitter:image" content="__SITE_URL__/screenshot.png" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "OtoQuote AI",
+        "applicationCategory": "BusinessApplication",
+        "applicationSubCategory": "Construction estimating and quotation software",
+        "operatingSystem": "Web, Android, iOS",
+        "url": "__SITE_URL__/",
+        "description": "AI-powered construction quotation software for Nigerian tradespeople. Describe a job in plain language and receive a complete itemised quotation covering materials, quantities and labour in Naira, then edit it, brand it and export it as a PDF or invoice.",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "NGN",
+          "availability": "https://schema.org/InStock"
+        },
+        "featureList": [
+          "AI quotation generation from a plain-language job description",
+          "Material and labour breakdown with Nigerian units and Naira pricing",
+          "Conversational quotation editing",
+          "Personal price log that overrides AI estimates",
+          "Regional market price consensus by Nigerian state",
+          "Branded PDF quotation export in three templates",
+          "Quotation to invoice conversion and status tracking"
+        ]
+      }
+    </script>
+
     <!-- Mobile/PWA viewport: keep app chrome synced with browser bars and keyboard. -->
     <script>
       function setAppHeight() {

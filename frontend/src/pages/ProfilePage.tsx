@@ -22,6 +22,9 @@ import { toast } from "sonner";
 import { Field, Input, Select, SectionCard } from "@/components/form-primitives";
 import { Skeleton } from "@/components/ui/skeleton";
 
+// Surfaced on the profile so a support email can reference a build.
+const APP_VERSION = __APP_VERSION__;
+
 const TRADE_TYPES = [
   "Electrician", "Plumber", "Builder / Mason", "Painter", "Carpenter", "Tiler",
   "Welder / Fabricator", "AC / Refrigeration Technician", "Generator Technician",
@@ -252,8 +255,17 @@ const ProfilePage = () => {
           {/* ── Support ─────────────────────────────────────────────────── */}
           <SectionCard title="Support" icon={<HelpCircle size={16} />}>
             <div className="-mx-1 divide-y divide-border/50">
-              <SupportItem icon={<HelpCircle size={15} />} label="Help & Support" />
-              <SupportItem icon={<Info size={15} />} label="About OtoQuote AI" />
+              <SupportItem
+                icon={<HelpCircle size={15} />}
+                label="Help & support"
+                href={`mailto:support@otoquote.ai?subject=${encodeURIComponent("OtoQuote support request")}&body=${encodeURIComponent(`
+
+---
+Account: ${user?.email ?? ""}
+Trade: ${profile?.trade_type ?? ""}
+State: ${profile?.state_operation ?? ""}`)}`}
+              />
+              <SupportItem icon={<Info size={15} />} label="OtoQuote AI" hint={`Version ${APP_VERSION}`} />
             </div>
           </SectionCard>
 
@@ -300,13 +312,46 @@ const InfoRow = ({
   </div>
 );
 
-const SupportItem = ({ icon, label }: { icon: React.ReactNode; label: string }) => (
-  <button className="w-full flex items-center gap-3 px-1 py-3.5 hover:bg-secondary/40 transition-colors text-left rounded-lg min-h-[44px]">
-    <span className="text-muted-foreground">{icon}</span>
-    <span className="text-sm font-medium text-foreground flex-1">{label}</span>
-    <span className="text-muted-foreground/60 text-xs">›</span>
-  </button>
-);
+const SupportItem = ({
+  icon,
+  label,
+  href,
+  hint,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  href?: string;
+  hint?: string;
+}) => {
+  const body = (
+    <>
+      <span className="text-muted-foreground">{icon}</span>
+      <span className="flex-1 text-sm font-medium text-foreground">{label}</span>
+      {hint ? (
+        <span className="text-xs text-muted-foreground">{hint}</span>
+      ) : (
+        <span className="text-xs text-muted-foreground/60">›</span>
+      )}
+    </>
+  );
+
+  if (!href) {
+    return (
+      <div className="flex min-h-[44px] w-full items-center gap-3 rounded-lg px-1 py-3.5 text-left">
+        {body}
+      </div>
+    );
+  }
+
+  return (
+    <a
+      href={href}
+      className="flex min-h-[44px] w-full items-center gap-3 rounded-lg px-1 py-3.5 text-left transition-colors hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+    >
+      {body}
+    </a>
+  );
+};
 
 const IdentityCardSkeleton = () => (
   <div className="bg-card rounded-2xl border border-border/60 p-5 lg:p-6">

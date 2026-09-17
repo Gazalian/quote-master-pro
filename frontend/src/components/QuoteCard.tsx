@@ -9,6 +9,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { toast } from "sonner";
 import { useBootstrap } from "@/hooks/useBootstrap";
 import { useSaveQuote, useUpdateQuote } from "@/hooks/useQuotes";
+import { Money } from "@/lib/currency";
 
 // Lazy-loaded so the PDF renderer (~400 KB gzipped) only ships when the user
 // actually clicks Export PDF — keeps the main bundle lean for chat-only sessions.
@@ -200,11 +201,11 @@ export const QuoteCard = ({ quote, onQuoteSaved, mode = "dashboard" }: { quote: 
                       <div className="min-w-0 flex-1">
                         <p className="text-[13px] font-medium text-gray-800 leading-tight truncate">{item.name}</p>
                         <p className="text-[11px] text-gray-400 mt-px">
-                          {item.qty} {item.unit} × ₦{item.unitPrice.toLocaleString("en-NG")}
+                          {item.qty} {item.unit} × <Money amount={item.unitPrice} />
                         </p>
                       </div>
                       <span className="text-[13px] font-semibold text-gray-900 whitespace-nowrap shrink-0">
-                        ₦{item.total.toLocaleString("en-NG")}
+                        <Money amount={item.total} />
                       </span>
                     </div>
                   ))}
@@ -216,7 +217,7 @@ export const QuoteCard = ({ quote, onQuoteSaved, mode = "dashboard" }: { quote: 
           {/* Grand total bar */}
           <div className="mx-3 mb-3 flex justify-between items-center bg-primary/5 rounded-xl px-4 py-3 border border-primary/10">
             <span className="text-xs font-bold text-gray-600 uppercase tracking-wide">Grand Total</span>
-            <span className="text-base font-black text-primary">₦{currentQuote.grandTotal.toLocaleString("en-NG")}</span>
+            <Money amount={currentQuote.grandTotal} className="text-base font-black text-primary" />
           </div>
         </div>
 

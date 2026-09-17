@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Money } from "@/lib/currency";
 import { ChevronLeft, Search, MoreVertical, Loader2 } from "lucide-react";
 import { QuoteCard } from "@/components/QuoteCard";
 import { QuoteRowSkeleton } from "@/components/skeletons";
@@ -25,7 +26,6 @@ const isTemplateStyle = (value: string): value is TemplateStyle =>
   value === "classic" || value === "modern" || value === "minimal";
 const toTemplateStyle = (value: string | undefined | null): TemplateStyle =>
   value && isTemplateStyle(value) ? value : "classic";
-const formatNGN = (amount: number) => `₦${amount.toLocaleString("en-NG")}`;
 
 // Maps the lightweight list row → a full-ish Quote for QuoteCard (used only
 // when the user opens a list item; the detail view fetches the heavy data).
@@ -207,7 +207,7 @@ const QuotesPage = () => {
             <button
               key={f}
               onClick={() => setFilter(f)}
-              className={`px-4 py-1.5 rounded-full text-xs font-semibold shrink-0 transition-colors ${
+              className={`flex min-h-[40px] shrink-0 items-center rounded-full px-4 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                 filter === f
                   ? "bg-primary text-primary-foreground shadow-sm"
                   : "bg-secondary text-muted-foreground hover:bg-secondary/80 hover:text-foreground"
@@ -219,7 +219,7 @@ const QuotesPage = () => {
         </div>
       </div>
 
-      <div className="mobile-scroll flex-1 p-3 sm:p-4 md:p-6 space-y-4 bg-secondary/10">
+      <div className="mobile-scroll flex-1 space-y-2.5 bg-secondary/10 p-3 sm:p-4 md:p-6">
         {isLoading ? (
           <QuoteRowSkeleton />
         ) : filtered.length === 0 ? (
@@ -232,26 +232,37 @@ const QuotesPage = () => {
             <div
               key={q.id}
               onClick={() => setSelectedId(q.id)}
-              className="bg-card rounded-xl p-5 border border-border/50 shadow-sm hover:shadow-md hover:border-border transition-all relative group cursor-pointer"
+              className="bg-card rounded-xl px-4 py-3.5 sm:px-5 sm:py-4 border border-border/50 shadow-sm hover:shadow-md hover:border-border transition-all relative group cursor-pointer"
             >
-              <div className="flex items-start justify-between mb-2">
-                <div className="flex-1 min-w-0 pr-4">
-                  <div className="flex items-center gap-2 mb-1">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1.5">
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md tracking-wide ${statusStyles[q.status]}`}>
                       {q.status}
                     </span>
                     <span className="text-xs font-mono text-muted-foreground bg-secondary px-2 rounded-md">{q.ref}</span>
+                    <span className="hidden text-xs text-muted-foreground sm:inline">
+                      {new Date(q.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+                    </span>
                   </div>
                   <p className="font-semibold text-base text-foreground truncate">{q.client_name}</p>
-                  <p className="text-xs text-muted-foreground mt-1 truncate">{q.description}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5 truncate">{q.description}</p>
                 </div>
-                <div className="relative">
+
+                {/* Total sits beside the client on every size that can hold it,
+                    which removes the old full-width divider row and lets twice
+                    as many quotes fit on screen. */}
+                <div className="hidden shrink-0 text-right sm:block">
+                  <Money amount={Number(q.grand_total)} className="text-lg font-black text-primary" />
+                </div>
+
+                <div className="relative shrink-0">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       setOpenDropdownId(openDropdownId === q.id ? null : q.id);
                     }}
-                    className="touch-target text-muted-foreground hover:bg-secondary hover:text-foreground rounded-lg transition-colors opacity-100 lg:opacity-0 lg:group-hover:opacity-100 flex items-center justify-center"
+                    className="touch-target flex items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground lg:opacity-50 lg:group-hover:opacity-100"
                     aria-label={`Open actions for ${q.ref}`}
                   >
                     <MoreVertical size={20} />
@@ -294,11 +305,11 @@ const QuotesPage = () => {
                   )}
                 </div>
               </div>
-              <div className="flex items-end justify-between mt-4 pt-4 border-t border-border/50">
+              <div className="mt-2.5 flex items-baseline justify-between sm:hidden">
                 <span className="text-xs font-semibold text-muted-foreground">
                   {new Date(q.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
                 </span>
-                <span className="font-black text-lg text-primary">{formatNGN(Number(q.grand_total))}</span>
+                <Money amount={Number(q.grand_total)} className="text-base font-black text-primary" />
               </div>
             </div>
           ))

@@ -55,9 +55,11 @@ export const AuthProvider = ({ children, queryClient }: AuthProviderProps) => {
 
   return (
     <AuthContext.Provider value={{ user, session, loading }}>
-      <div className="min-h-app bg-background text-foreground animate-in fade-in duration-500">
-        {children}
-      </div>
+      {/* No entrance animation here. This wrapper sits above every signed-in
+          screen, so a fade made each one cost an extra half-second before it
+          was readable — including on hard refresh. Transitions belong on the
+          things that actually change, not on the whole app. */}
+      <div className="min-h-app bg-background text-foreground">{children}</div>
     </AuthContext.Provider>
   );
 };

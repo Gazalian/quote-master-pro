@@ -103,6 +103,77 @@ Key DB objects added in this refactor:
 - `get_quotation_list(limit, offset, status)` — list view without heavy JSONB
 - 8 composite indexes on `(user_id, created_at DESC)` style hot paths
 
+## Boot & performance
+
+`/` is the entry route for every first-time visitor, so it is **statically**
+imported in `App.tsx`. Everything behind it — React Query, Supabase, the Radix
+providers and all signed-in routes — lives in `AppShell.tsx`, a lazy chunk that
+marketing traffic never downloads.
+
+```
+App.tsx           /      → LandingPage   (static, in the entry chunk)
+                  /*     → AppShell      (lazy)
+AppShell.tsx      auth, chat, quotes, brand, profile, pricelog
+```
+
+Routes inside `AppShell` use **relative** paths (`auth`, not `/auth`) because
+they resolve against the parent splat route.
+
+Three rules keep first paint fast — all three were regressions once:
+
+1. **Don't lazy-load `LandingPage`.** It only buys a spinner and a second
+   round trip before anything can paint.
+2. **Don't move fonts back to a CDN `<link>`.** They are self-hosted in
+   `public/fonts/` (latin subset, variable cuts for Inter and Archivo) and
+   precached by Workbox. The external stylesheet was render-blocking and cost
+   ~1.6s cold.
+3. **Don't add entrance animations above the route tree.** A blanket fade on
+   `AuthProvider` delayed every signed-in screen by half a second.
+
+`RouteLoader` deliberately holds its spinner back ~220ms: anything that
+resolves faster shows nothing at all, because a spinner that flashes and
+disappears reads as jank.
+
+Measured on `vite preview`, cold, desktop: FCP 4588ms → 584ms, entry bundle
+494 kB → 244 kB, requests on `/` 11 → 3.
+
+## Money
+
+Prices go through `<Money>` in `src/lib/currency.tsx` — never `₦{value}`
+inline. The ₦ glyph has no right side-bearing in Inter and its crossbars run
+into the following digit, which makes a price look struck through. `formatNGN`
+is for strings only (attributes, toasts, PDFs, filenames).
+
+## Marketing site
+
+The landing page at `/` is built from section components in
+`frontend/src/components/landing/`, assembled by `pages/LandingPage.tsx`. All of
+its CSS is scoped under `.lp` (bottom of `src/index.css`) so nothing can leak
+into the authenticated app.
+
+- **Motion** is IntersectionObserver + CSS transitions only (see
+  `landing/primitives.tsx`). No animation library — `framer-motion` is an
+  unused dependency and should stay that way. Under `prefers-reduced-motion`
+  every section renders in its final state, including the revision demo.
+- **Type** is Archivo (display) / Inter (body) / IBM Plex Mono (technical
+  labels), loaded via `<link>` in `index.html`. Don't move this back to a CSS
+  `@import` — it chains behind the stylesheet and delays first paint.
+- **Colour** tokens live in `tailwind.config.ts`. `brand-orange` and
+  `brand-green` are fill-only — at label sizes neither clears 4.5:1, so text
+  must use the `-ink` variants. `ink-400` is the muted tone for dark panels,
+  `ink-300`/`ink-500` for light ones, and `ink-100`/`ink-50` are rules and
+  fills, never text. The page currently has zero WCAG AA contrast failures.
+- **Canonical and Open Graph URLs** come from the `SITE_URL` env var at build
+  time, defaulting to `https://otoquote.ai`:
+
+```bash
+SITE_URL=https://your-domain.com npm --prefix frontend run build
+```
+
+Every quotation figure on the page is an illustrative example, and the footer
+says so. There is no usage, testimonial or traction data anywhere in this
+codebase — don't add numbers to the page until they are real.
+
 ## Scripts
 
 | Command               | What it does |

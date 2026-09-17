@@ -16,6 +16,11 @@ export default {
     extend: {
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
+        // Archivo: a sturdy grotesque — technical and confident at large sizes
+        // without reading as a construction-company logotype.
+        display: ['Archivo', 'Inter', 'system-ui', 'sans-serif'],
+        // Used for refs, quantities, units and measurement marks.
+        mono: ['"IBM Plex Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
       colors: {
         border: "hsl(var(--border))",
@@ -91,6 +96,40 @@ export default {
           active: "hsl(var(--nav-active))",
           inactive: "hsl(var(--nav-inactive))",
         },
+        // ── Marketing-site palette ────────────────────────────────────────
+        // The three OtoQuote brand colours, named so landing sections stop
+        // hard-coding hex values, plus an ink ramp for typography. Headlines
+        // use ink rather than brand blue — blue-on-everything is what made
+        // the old page read as a template.
+        // Signal Orange and Emerald are brand *fill* colours — at label sizes
+        // neither clears 4.5:1 on white, so each has a darkened `-ink` variant
+        // that is the only one allowed to carry text.
+        brand: {
+          blue: "#0056D2",
+          "blue-700": "#0046AC",
+          "blue-50": "#EEF4FE",
+          orange: "#F58220",
+          "orange-ink": "#A34E0D",
+          "orange-50": "#FEF4EA",
+          green: "#009A44",
+          "green-ink": "#00702F",
+          "green-50": "#E9F7EF",
+        },
+        // 500 and 300 are the muted text tones for LIGHT backgrounds (5.9:1
+        // and 5.0:1 on white). 400 is the muted tone for DARK panels, where
+        // 300 would be too close to the background. 100/50 are fills and
+        // rules only — never text.
+        ink: {
+          DEFAULT: "#0C1522",
+          900: "#0C1522",
+          700: "#26364B",
+          500: "#54657D",
+          400: "#8A9AB0",
+          300: "#5B6A84",
+          100: "#DCE3ED",
+          50: "#EEF2F7",
+        },
+        paper: "#FBFCFE",
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -114,10 +153,21 @@ export default {
             height: "0",
           },
         },
+        // Landing marquee — translate-only so it stays on the compositor.
+        "marquee-x": {
+          from: { transform: "translate3d(0,0,0)" },
+          to: { transform: "translate3d(-50%,0,0)" },
+        },
+        "caret-blink": {
+          "0%,100%": { opacity: "1" },
+          "50%": { opacity: "0" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        "marquee-x": "marquee-x 42s linear infinite",
+        "caret-blink": "caret-blink 1s steps(1) infinite",
       },
     },
   },

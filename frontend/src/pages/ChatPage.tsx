@@ -6,6 +6,7 @@ import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { QuoteCard } from "@/components/QuoteCard";
 import { ChatHistoryDrawer } from "@/components/ChatHistoryDrawer";
 import { MessageBubble } from "@/components/chat/MessageBubble";
+import { ChatStarters } from "@/components/chat/ChatStarters";
 import { ChatSkeleton } from "@/components/skeletons";
 import { useIsDesktop } from "@/hooks/use-mobile";
 import { useBootstrap } from "@/hooks/useBootstrap";
@@ -120,7 +121,7 @@ const ChatPage = () => {
   const generate = useGenerateQuote();
   const updateQuote = useUpdateQuote();
   const uploadImage = useUploadChatImage();
-  useBootstrap(); // prime the cache — referenced by QuoteCard
+  const { data: bootstrap } = useBootstrap(); // also referenced by QuoteCard
 
   // Local UI state
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
@@ -138,6 +139,7 @@ const ChatPage = () => {
   const [progressStage, setProgressStage] = useState(0);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -159,6 +161,12 @@ const ChatPage = () => {
 
   const showChatSkeleton =
     !!currentSessionId && !loadedMessages && isFetchingMessages;
+
+  // A thread nobody has typed into yet: only the canned greeting is present.
+  // That's the moment worth filling with worked examples — once there's a real
+  // exchange, the starters would just be noise above the conversation.
+  const isFreshThread =
+    !showChatSkeleton && messages.length <= 1 && !messages.some((m) => m.role === "user");
 
   // Hydrate header state from the lightweight meta call
   useEffect(() => {
@@ -640,7 +648,31 @@ const ChatPage = () => {
         {showChatSkeleton ? (
           <ChatSkeleton />
         ) : (
-          messages.map((msg) => (
+          <>
+            {isFreshThread && (
+              <ChatStarters
+                trade={bootstrap?.profile?.trade_type}
+                state={bootstrap?.profile?.state_operation}
+                onPick={(prompt) => {
+                  setInput(prompt);
+                  // Focus and drop the caret at the end so the user can edit
+                  // the numbers straight away.
+                  requestAnimationFrame(() => {
+                    const el = composerRef.current;
+                    if (!el) return;
+                    el.focus();
+                    el.setSelectionRange(prompt.length, prompt.length);
+                    el.style.height = "24px";
+                    el.style.height = Math.min(el.scrollHeight, 120) + "px";
+                  });
+                }}
+                onAttach={() => fileInputRef.current?.click()}
+              />
+            )}
+            {/* On a fresh thread the starters panel says everything the canned
+                greeting said, in more useful form — rendering both just
+                repeats the instruction and strands the greeting below it. */}
+            {(isFreshThread ? [] : messages).map((msg) => (
             <MessageBubble
               key={msg.id}
               msg={msg}
@@ -653,9 +685,10 @@ const ChatPage = () => {
               onCancelEdit={cancelEditing}
               onSubmitEdit={handleSaveEdit}
               progressLabel={progressLabel}
-              quoteSlot={quoteSlot}
-            />
-          ))
+                quoteSlot={quoteSlot}
+              />
+            ))}
+          </>
         )}
         <div className="h-2" />
       </div>
@@ -717,6 +750,7 @@ const ChatPage = () => {
           {/* Composer */}
           <div className="min-w-0 flex-1 flex items-end bg-gray-100 rounded-[22px] px-4 py-2 border border-transparent focus-within:border-[#0056D2]/30 focus-within:bg-white transition-all duration-200">
             <textarea
+              ref={composerRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
@@ -758,16 +792,23 @@ const ChatPage = () => {
               <Send size={17} className="ml-0.5" />
             </button>
           ) : (
+            // Voice input isn't built yet. Rather than let the control look
+            // live and fail on tap, it's visibly inert: dimmed, aria-disabled,
+            // with a "coming soon" badge and a tooltip that says so.
             <button
+              type="button"
+              aria-disabled="true"
               onClick={() =>
-                toast.info("Voice input coming soon!", {
-                  description: "Type your message for now.",
+                toast.info("Voice input isn't ready yet", {
+                  description: "Type the job for now — we'll tell you when it lands.",
                 })
               }
-              className="touch-target shrink-0 flex items-center justify-center bg-gray-100 text-gray-600 rounded-full hover:bg-gray-200 active:bg-gray-300 transition-colors"
-              aria-label="Voice input"
+              className="touch-target group relative shrink-0 cursor-not-allowed flex items-center justify-center rounded-full bg-gray-50 text-gray-300 transition-colors"
+              title="Voice input — coming soon"
+              aria-label="Voice input — coming soon, not yet available"
             >
-              <Mic size={19} />
+              <Mic size={19} aria-hidden="true" />
+              <span className="pointer-events-none absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full border border-white bg-gray-300" />
             </button>
           )}
         </div>

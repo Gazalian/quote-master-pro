@@ -391,7 +391,7 @@ const ColorRow = ({
       <button
         type="button"
         onClick={() => setShowPicker(!showPicker)}
-        className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-primary hover:bg-primary/10 rounded-md transition-colors min-h-[28px]"
+        className="flex min-h-[40px] items-center gap-1.5 rounded-md px-2.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
       >
         <Pipette size={12} />
         {showPicker ? "Done" : "Custom"}

@@ -27,7 +27,6 @@ import { SortableItem } from "./dnd/SortableItem";
 import { useAuth } from "@/lib/AuthContext";
 import { usePriceLog, useUpsertPriceLog } from "@/hooks/usePriceLog";
 
-const formatNGN = (amount: number) => `₦${amount.toLocaleString("en-NG")}`;
 
 interface Props {
   quote: Quote;
@@ -36,6 +35,7 @@ interface Props {
 }
 
 import { QuoteCard } from "./QuoteCard";
+import { Money, formatNGN } from "@/lib/currency";
 
 export const QuoteEditor = ({ quote, onClose, onSave }: Props) => {
   const { user } = useAuth();
@@ -332,7 +332,7 @@ export const QuoteEditor = ({ quote, onClose, onSave }: Props) => {
           </div>
           <div className="min-w-0 text-right">
             <label className="text-[9px] text-muted-foreground">Total</label>
-            <p className="text-sm sm:text-xs font-semibold text-foreground py-2 truncate">{formatNGN(item.total)}</p>
+            <p className="text-sm sm:text-xs font-semibold text-foreground py-2 truncate"><Money amount={item.total} /></p>
           </div>
         </div>
       </div>
@@ -455,7 +455,7 @@ export const QuoteEditor = ({ quote, onClose, onSave }: Props) => {
                         />
                       </div>
                       <div className="flex min-w-0 items-center gap-2 shrink-0">
-                        <span className="max-w-[7rem] truncate text-xs font-semibold text-primary">{formatNGN(groupTotal)}</span>
+                        <span className="max-w-[7rem] truncate text-xs font-semibold text-primary"><Money amount={groupTotal} /></span>
                         <button 
                           onClick={(e) => {
                             e.stopPropagation();
@@ -532,12 +532,12 @@ export const QuoteEditor = ({ quote, onClose, onSave }: Props) => {
         {vatEnabled && (
           <div className="flex justify-between text-xs font-medium text-muted-foreground animate-in fade-in slide-in-from-top-1">
             <span>VAT (7.5%)</span>
-            <span>{formatNGN(vatAmount)}</span>
+            <span><Money amount={vatAmount} /></span>
           </div>
         )}
         <div className="flex justify-between items-center pt-2 mt-1 border-t border-border border-dashed">
           <span className="font-bold text-foreground uppercase tracking-wide text-xs">Grand Total</span>
-          <span className="font-bold text-xl text-primary">{formatNGN(finalTotal)}</span>
+          <span className="font-bold text-xl text-primary"><Money amount={finalTotal} /></span>
         </div>
       </div>
 
@@ -547,7 +547,7 @@ export const QuoteEditor = ({ quote, onClose, onSave }: Props) => {
           className="fixed inset-x-0 bottom-0 z-[110] keyboard-aware-bottom px-4 pt-4 bg-card border-t border-border shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.15)] animate-in slide-in-from-bottom-5"
         >
           <p className="text-sm text-foreground mb-4">
-            Save <span className="font-bold text-primary">{formatNGN(priceLogPrompt.price)}</span> as your price for{" "}
+            Save <span className="font-bold text-primary"><Money amount={priceLogPrompt.price} /></span> as your price for{" "}
             <span className="font-bold">{priceLogPrompt.itemName}</span> in your Price Log?
           </p>
           <div className="flex gap-2">
